@@ -1,5 +1,14 @@
-# Path of Building Community
-## Welcome to Path of Building, an offline build planner for Path of Exile!
+# ExileForge — Path of Building for LocalExile
+
+ExileForge is a fork of the [Path of Building Community Fork](https://github.com/PathOfBuildingCommunity/PathOfBuilding),
+based on its **master** release **2.67.2**.
+It keeps PoB's build planner and adds **Forge Character** in **Import/Export Build** to preview or create a character
+on a configurable LocalExile server.
+
+The source checkout and runnable application are separate folders.
+The portable application has its own settings and builds, so your normal PoB installation can stay dedicated to live PoE 1.
+LocalExile's receiver is a separate server component; its current import compatibility determines which builds can be forged.
+See [LocalExile setup and compatibility](docs/LocalExile.md) before importing a build.
 
 <p float="middle">
   <img alt="Tree tab" src="https://github.com/user-attachments/assets/0826b7ab-84ba-440f-be52-2f216f13e75c" width="48%" />
@@ -45,16 +54,34 @@
 * Other features:
   * You can import passive tree, items, and skills from existing characters
   * Share builds with other users by generating a share code
-  * Automatic updating; most updates will only take a couple of seconds to apply
+  * ExileForge keeps upstream automatic updates disabled so they cannot overwrite this fork's integration
 
-## Download
-Head over to the [Releases](https://github.com/PathOfBuildingCommunity/PathOfBuilding/releases) page to download the install wizard or portable zip.
+## Run ExileForge
+
+On Windows, use Python 3.10 or newer and run this from the source checkout's root:
+
+```powershell
+python scripts/package-exileforge.py --destination '..\ExileForge-app'
+```
+
+Choose a destination folder that does not already exist.
+The command packages this fork's Lua, assets and existing compiled runtime into a separate application containing
+**ExileForge.exe**.
+It does not require an installed PoB copy or copy personal settings and builds.
+Open the output folder in File Explorer and double-click **ExileForge.exe**.
+
+For the LocalExile button, server connection, account token and packaging options, follow
+[the ExileForge guide](docs/LocalExile.md).
+The unmodified upstream application's downloads remain available from
+[Path of Building Community releases](https://github.com/PathOfBuildingCommunity/PathOfBuilding/releases).
 
 ## Changelog
 You can find the full version history [here](CHANGELOG.md).
 
 ## Contribute
-You can find instructions on how to contribute code and bug reports [here](CONTRIBUTING.md).
+Keep ExileForge changes focused on this fork's branding, packaging and LocalExile connection.
+The [LocalExile guide](docs/LocalExile.md#development-checks) lists its focused checks.
+The existing [contribution guide](CONTRIBUTING.md) describes upstream PoB development and contribution procedures.
 
 ## Licence
 [MIT](https://opensource.org/licenses/MIT)
