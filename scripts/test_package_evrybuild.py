@@ -7,18 +7,18 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
-spec = importlib.util.spec_from_file_location("exileforge_package", Path(__file__).with_name("package-exileforge.py"))
+spec = importlib.util.spec_from_file_location("evrybuild_package", Path(__file__).with_name("package-evrybuild.py"))
 package_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package_module)
 
 
 class PackageTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="exileforge-source-package-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="evrybuild-source-package-")
         self.folder = Path(self.temporary.name)
         self.source = self.folder / "source"
         self.source.mkdir()
-        self.target = self.folder / "ExileForge"
+        self.target = self.folder / "evryBuild"
         self.entries = [
             ("default", "LICENSE.md"), ("default", "help.txt"), ("default", "changelog.txt"),
             ("runtime", package_module.HOST), ("runtime", "lua51.dll"), ("runtime", "SimpleGraphic.dll"),
@@ -62,7 +62,7 @@ class PackageTests(unittest.TestCase):
         before[changed.relative_to(self.source)] = changed.read_bytes()
         result = self.package()
         self.assertTrue(result["ok"])
-        self.assertEqual((self.target / "ExileForge.exe").read_bytes(), (self.source / "runtime" / package_module.HOST).read_bytes())
+        self.assertEqual((self.target / "evryBuild.exe").read_bytes(), (self.source / "runtime" / package_module.HOST).read_bytes())
         self.assertEqual((self.target / "Modules/Main.lua").read_bytes(), changed.read_bytes())
         self.assertEqual((self.target / "Modules/LocalExile.lua").read_text(), "current fork integration")
         self.assertTrue((self.target / "lua/dkjson.lua").is_file())
@@ -80,12 +80,12 @@ class PackageTests(unittest.TestCase):
         release = ET.parse(self.target / "manifest.xml").getroot().find("Version")
         self.assertEqual("2.67.2", release.get("number"))
         self.assertEqual("win32", release.get("platform"))
-        self.assertEqual("exileforge", release.get("branch"))
-        record = json.loads((self.target / "ExileForge-package.json").read_text())
+        self.assertEqual("evrybuild", release.get("branch"))
+        record = json.loads((self.target / "evryBuild-package.json").read_text())
         self.assertEqual("source-commit", record["sourceRevision"])
         self.assertTrue(record["portableUserData"])
         self.assertIn("Modules/LocalExile.lua", record["filesSha256"])
-        self.assertIn('"%~dp0ExileForge.exe" "%~dp0Launch.lua"', (self.target / "ExileForge.cmd").read_text())
+        self.assertIn('"%~dp0evryBuild.exe" "%~dp0Launch.lua"', (self.target / "evryBuild.cmd").read_text())
 
     def test_an_existing_application_or_profile_is_never_overwritten(self):
         self.target.mkdir()
@@ -103,7 +103,7 @@ class PackageTests(unittest.TestCase):
     def test_an_ignored_dist_directory_can_hold_a_new_release(self):
         dist = self.source / "dist"
         dist.mkdir()
-        self.target = dist / "ExileForge"
+        self.target = dist / "evryBuild"
         self.assertTrue(self.package()["ok"])
 
     def test_bad_manifest_paths_private_state_and_missing_files_stop_before_publication(self):
@@ -138,7 +138,7 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "synthetic"):
                 self.package()
         self.assertFalse(self.target.exists())
-        self.assertEqual([], list(self.folder.glob(".exileforge-package-*")))
+        self.assertEqual([], list(self.folder.glob(".evrybuild-package-*")))
         self.assertEqual("unrelated", marker.read_text())
 
     def test_omitted_required_integration_and_output_collisions_are_rejected(self):

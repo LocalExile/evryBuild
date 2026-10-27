@@ -1,6 +1,6 @@
-# ExileForge — Path of Building for LocalExile
+# evryBuild - POB for LocalExile
 
-ExileForge adds **Forge Character** to PoB's **Import/Export Build** tab, below Build Sharing.
+evryBuild adds **Forge Character** to PoB's **Import/Export Build** tab, below Build Sharing.
 It exports the active build in memory and sends it to a configured LocalExile receiver.
 **Preview** checks compatibility without creating a character.
 **Forge Character** asks the receiver to create a new character under your local account.
@@ -17,38 +17,37 @@ Use Windows and Python 3.10 or newer.
 Open PowerShell in this source checkout's root, then run:
 
 ```powershell
-python scripts/package-exileforge.py --destination 'F:\evry\evryPath\ExileForge-new'
+python scripts/package-evrybuild.py --destination '..\evryBuild-app'
 ```
 
-The example uses a new folder so it does not overwrite the existing application at
-`F:\evry\evryPath\ExileForge`.
+The example creates a new application folder next to the source checkout.
 Choose another destination if needed; its parent folder must already exist and the destination must not exist.
 The optional `--source-root` selects another checkout and otherwise defaults to the repository containing the script.
 No installed PoB or LocalExile checkout is needed for packaging.
 
 The package contains this checkout's current Lua and assets, the existing compiled runtime renamed to
-**ExileForge.exe**, licenses, and an explicit **ExileForge.cmd** launcher.
+**evryBuild.exe**, licenses, and an explicit **evryBuild.cmd** launcher.
 Packaging does not compile a new native runtime executable.
 The application's source, packaged application and live PoB installation should remain separate, for example:
 
 | Purpose | Example folder |
 |---|---|
-| This fork's Git source checkout | `F:\evry\evryPath\ExileForge-src` |
-| Existing portable ExileForge application | `F:\evry\evryPath\ExileForge` |
-| New package for validation | `F:\evry\evryPath\ExileForge-new` |
+| This fork's Git source checkout | `evryBuild` |
+| Portable evryBuild application | `evryBuild-app` |
+| Another new package for validation | `evryBuild-validation` |
 | Normal PoB for live PoE 1 | `C:\Path of Building Community (POE1)` |
 
 The package starts with its own portable settings and empty `Builds` folder.
 Personal builds, settings, remembered connection preferences, credentials and downloaded updates are not copied.
-ExileForge's upstream updater is disabled, so it cannot replace the fork's code with unmodified PoB files.
+evryBuild's upstream updater is disabled, so it cannot replace the fork's code with unmodified PoB files.
 Your separate live PoB installation keeps its normal update behavior.
 
-Open the destination in **File Explorer** and double-click **ExileForge.exe**.
-If using a launcher or shortcut that needs explicit paths, use the included **ExileForge.cmd**, or run:
+Open the destination in **File Explorer** and double-click **evryBuild.exe**.
+If using a launcher or shortcut that needs explicit paths, use the included **evryBuild.cmd**, or run:
 
 ```powershell
-$exileForgeFolder = 'F:\evry\evryPath\ExileForge-new'
-Start-Process -FilePath (Join-Path $exileForgeFolder 'ExileForge.exe') -ArgumentList ('"' + (Join-Path $exileForgeFolder 'Launch.lua') + '"') -WorkingDirectory $exileForgeFolder
+$evryBuildFolder = (Resolve-Path -LiteralPath '..\evryBuild-app').Path
+Start-Process -FilePath (Join-Path $evryBuildFolder 'evryBuild.exe') -ArgumentList ('"' + (Join-Path $evryBuildFolder 'Launch.lua') + '"') -WorkingDirectory $evryBuildFolder
 ```
 
 ## Start a compatible LocalExile receiver
@@ -57,14 +56,15 @@ The receiver is required in addition to the normal game services.
 Use a LocalExile checkout containing the companion PoB receiver, with extracted client data and an existing local account.
 The receiver's scripts and C# implementation are maintained in that server repository, not here.
 
-For the existing local setup, open a separate PowerShell window and run:
+For sibling `evryBuild` and `evryPath` source checkouts, open the `evryPath` folder in File Explorer.
+Click its address bar, type `powershell`, then press Enter to open PowerShell in that server checkout.
+Run:
 
 ```powershell
-Set-Location F:\evry\evryPath\LocalExile
 .\scripts\dev\pob-server.ps1
 ```
 
-For another setup, replace the first path with that LocalExile checkout's root.
+For another setup, open PowerShell in that LocalExile checkout's root instead.
 The receiver's default address is `http://127.0.0.1:20496`.
 Its first run creates `config\pob-server.json` from its example and builds a separate receiver copy.
 Keep that window running while sending builds; Ctrl+C stops the receiver.
@@ -73,7 +73,6 @@ The normal Auth, Patch and Gateway processes can keep running.
 In a second PowerShell window in the same LocalExile checkout, issue a token for your existing local account:
 
 ```powershell
-Set-Location F:\evry\evryPath\LocalExile
 $accountName = Read-Host 'Existing LocalExile account name'
 .\scripts\dev\pob-server.ps1 -IssueToken -Account $accountName -NoBuild
 ```
@@ -87,7 +86,7 @@ The server owner supplies the account and token when connecting to a remotely ma
 
 ## Forge a character
 
-1. Open the build in ExileForge.
+1. Open the build in evryBuild.
    Select the tree, equipment set and skill set you want to import.
 2. Click **Import/Export Build → Forge Character**.
 3. Enter the receiver's **Server URL**, your **Local account**, and its **Account API token**.
@@ -125,7 +124,7 @@ Never add an API token or password to this file or to a saved build.
 
 ## Other servers and server folders
 
-Change **Server URL** in the ExileForge dialog to use another receiver.
+Change **Server URL** in the evryBuild dialog to use another receiver.
 Remote connections require a valid HTTPS address and certificate.
 Plain HTTP is accepted only for `localhost`, `127.0.0.1`, or `[::1]`.
 Requests do not follow redirects, so enter the final server address.
@@ -196,19 +195,19 @@ Quest completion and PoB's calculated totals, enemy assumptions and configuratio
 The server reports any extra ordinary passive points it grants for the selected allocation.
 
 The receiver remains responsible for authentication, account limits, item compatibility and all-or-nothing database saves.
-ExileForge does not bypass those rules or edit the database directly.
+evryBuild does not bypass those rules or edit the database directly.
 
 ## Development checks
 
 Run from this fork's source root with Python 3.10 or newer:
 
 ```powershell
-python tests/exileforge/test_localexile.py -v
-python -m unittest discover -s scripts -p test_package_exileforge.py -v
+python tests/evrybuild/test_localexile.py -v
+python -m unittest discover -s scripts -p test_package_evrybuild.py -v
 ```
 
 The first command tests this fork's Lua module using the bundled runtime and JSON/curl libraries.
-An alternate runtime can be supplied with `--runtime-dir 'F:\evry\evryPath\ExileForge'`.
-See [the integration test notes](../tests/exileforge/README.md) for details.
+An alternate complete runtime can be supplied with `--runtime-dir '..\evryBuild-app'`.
+See [the integration test notes](../tests/evrybuild/README.md) for details.
 The packaging tests use synthetic files and check runtime preservation, profile isolation and destination guards.
 These checks do not require a LocalExile installation or a live game client.

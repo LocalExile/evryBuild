@@ -1,12 +1,12 @@
--- ExileForge — Path of Building for LocalExile.
+-- evryBuild - POB for LocalExile.
 -- Integration for PathOfBuildingCommunity/PathOfBuilding master.
 -- Loaded by the Import/Export Build tab.
 local json = require("dkjson")
 local M = { }
 local attachedTab = ...
 local MAX_RESPONSE = 128 * 1024
-local BRAND = "ExileForge"
-local SUBTITLE = "Path of Building for LocalExile"
+local BRAND = "evryBuild"
+local SUBTITLE = "POB for LocalExile"
 local BUTTON = "Forge Character"
 
 local function trim(value)
@@ -235,7 +235,7 @@ end
 
 function M.Attach(tab)
 	if tab.controls.localExileSend then return end
-	APP_NAME = BRAND .. " — " .. SUBTITLE
+	APP_NAME = BRAND .. " - " .. SUBTITLE
 	if main.SetWindowTitleSubtext then main:SetWindowTitleSubtext() end
 	tab.controls.sectionBuild.height = 222
 	tab.controls.localExileSend = new("ButtonControl", { "TOPLEFT", tab.controls.importCodeMode, "BOTTOMLEFT" },

@@ -1,16 +1,16 @@
-# ExileForge integration checks
+# evryBuild integration checks
 
 Run these checks from the repository root on Windows with Python 3.9 or newer:
 
 ```powershell
-python tests/exileforge/test_localexile.py -v
+python tests/evrybuild/test_localexile.py -v
 ```
 
 The default runtime is this checkout's `runtime` folder. To use another complete
-ExileForge/PoB runtime, pass its directory explicitly:
+evryBuild/PoB runtime, pass its directory explicitly:
 
 ```powershell
-python tests/exileforge/test_localexile.py --runtime-dir 'F:\evry\evryPath\ExileForge' -v
+python tests/evrybuild/test_localexile.py --runtime-dir '..\evryBuild-app' -v
 ```
 
 The tests always load the integration module from this source checkout,

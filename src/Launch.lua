@@ -6,7 +6,7 @@
 --
 
 local startTime = GetTime()
-APP_NAME = "ExileForge — Path of Building for LocalExile"
+APP_NAME = "evryBuild - POB for LocalExile"
 
 SetWindowTitle(APP_NAME)
 ConExecute("set vid_mode 8")
@@ -19,8 +19,8 @@ collectgarbage("setpause", 400)
 
 function launch:OnInit()
 	self.devMode = false
-	-- ExileForge is updated from its fork rather than the upstream PoB updater.
-	self.exileForgeEdition = true
+	-- evryBuild is updated from its fork rather than the upstream PoB updater.
+	self.evryBuildEdition = true
 	self.installedMode = false
 	self.versionNumber = "?"
 	self.versionBranch = "?"
@@ -325,7 +325,7 @@ function launch:DownloadPage(url, callback, params)
 end
 
 function launch:ApplyUpdate(mode)
-	if self.exileForgeEdition then return end
+	if self.evryBuildEdition then return end
 	if mode == "basic" then
 		-- Need to revert to the basic environment to fully apply the update
 		LoadModule("UpdateApply", "Update/opFile.txt")
@@ -340,7 +340,7 @@ function launch:ApplyUpdate(mode)
 end
 
 function launch:CheckForUpdate(inBackground)
-	if self.exileForgeEdition then
+	if self.evryBuildEdition then
 		self.lastUpdateCheck = GetTime()
 		return
 	end

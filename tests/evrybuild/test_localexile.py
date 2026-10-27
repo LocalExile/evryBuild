@@ -1,8 +1,8 @@
-"""Exercise ExileForge with its bundled Lua, JSON and curl libraries.
+"""Exercise evryBuild with its bundled Lua, JSON and curl libraries.
 
 Run from the repository root on Windows:
-  python tests/exileforge/test_localexile.py -v
-  python tests/exileforge/test_localexile.py --runtime-dir F:/evry/evryPath/ExileForge -v
+  python tests/evrybuild/test_localexile.py -v
+  python tests/evrybuild/test_localexile.py --runtime-dir ../evryBuild-app -v
 """
 import argparse
 import ctypes
@@ -65,7 +65,7 @@ class IntegrationTests(unittest.TestCase):
             raise FileNotFoundError(f"lua51.dll is missing from {runtime}; use --runtime-dir to select a complete runtime.")
 
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="exileforge-test-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="evrybuild-test-")
         self.addCleanup(self.temporary.cleanup)
         self.lua = Lua(INSTALLATION)
         self.addCleanup(self.lua.close)
@@ -106,10 +106,10 @@ class IntegrationTests(unittest.TestCase):
             M.Attach(tab)
             assert(tab.controls.localExileSend.kind == 'ButtonControl')
             assert(tab.controls.localExileSend.buf == 'Forge Character')
-            assert(main.windowTitle == 'ExileForge — Path of Building for LocalExile')
+            assert(main.windowTitle == 'evryBuild - POB for LocalExile')
             tab.controls.localExileSend.onClick()
-            assert(main.popup.title == 'ExileForge')
-            assert(main.popup.controls.intro.buf == 'Path of Building for LocalExile')
+            assert(main.popup.title == 'evryBuild')
+            assert(main.popup.controls.intro.buf == 'POB for LocalExile')
             assert(main.popup.controls.create.buf == 'Forge Character')
             assert(main.popup.controls.token.protected == true)
             assert(main.popup.controls.token.buf == '')

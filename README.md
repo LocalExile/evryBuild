@@ -1,6 +1,7 @@
-# ExileForge — Path of Building for LocalExile
+# evryBuild - POB for LocalExile
 
-ExileForge is a fork of the [Path of Building Community Fork](https://github.com/PathOfBuildingCommunity/PathOfBuilding),
+The [evryBuild project](https://github.com/evrydayjunglist/evryBuild) is a fork of the
+[Path of Building Community Fork](https://github.com/PathOfBuildingCommunity/PathOfBuilding),
 based on its **master** release **2.67.2**.
 It keeps PoB's build planner and adds **Forge Character** in **Import/Export Build** to preview or create a character
 on a configurable LocalExile server.
@@ -54,24 +55,24 @@ See [LocalExile setup and compatibility](docs/LocalExile.md) before importing a 
 * Other features:
   * You can import passive tree, items, and skills from existing characters
   * Share builds with other users by generating a share code
-  * ExileForge keeps upstream automatic updates disabled so they cannot overwrite this fork's integration
+  * evryBuild keeps upstream automatic updates disabled so they cannot overwrite this fork's integration
 
-## Run ExileForge
+## Run evryBuild
 
 On Windows, use Python 3.10 or newer and run this from the source checkout's root:
 
 ```powershell
-python scripts/package-exileforge.py --destination '..\ExileForge-app'
+python scripts/package-evrybuild.py --destination '..\evryBuild-app'
 ```
 
 Choose a destination folder that does not already exist.
 The command packages this fork's Lua, assets and existing compiled runtime into a separate application containing
-**ExileForge.exe**.
+**evryBuild.exe**.
 It does not require an installed PoB copy or copy personal settings and builds.
-Open the output folder in File Explorer and double-click **ExileForge.exe**.
+Open the output folder in File Explorer and double-click **evryBuild.exe**.
 
 For the LocalExile button, server connection, account token and packaging options, follow
-[the ExileForge guide](docs/LocalExile.md).
+[the evryBuild guide](docs/LocalExile.md).
 The unmodified upstream application's downloads remain available from
 [Path of Building Community releases](https://github.com/PathOfBuildingCommunity/PathOfBuilding/releases).
 
@@ -79,7 +80,7 @@ The unmodified upstream application's downloads remain available from
 You can find the full version history [here](CHANGELOG.md).
 
 ## Contribute
-Keep ExileForge changes focused on this fork's branding, packaging and LocalExile connection.
+Keep evryBuild changes focused on this fork's branding, packaging and LocalExile connection.
 The [LocalExile guide](docs/LocalExile.md#development-checks) lists its focused checks.
 The existing [contribution guide](CONTRIBUTING.md) describes upstream PoB development and contribution procedures.
 

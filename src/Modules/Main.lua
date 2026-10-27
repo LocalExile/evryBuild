@@ -222,11 +222,11 @@ function main:Init()
 		return not launch.devMode and (not launch.updateAvailable or launch.updateAvailable == "none")
 	end
 	self.controls.checkUpdate.label = function()
-		if launch.exileForgeEdition then return "ExileForge" end
+		if launch.evryBuildEdition then return "evryBuild" end
 		return launch.updateCheckRunning and launch.updateProgress or "Check for Update"
 	end
 	self.controls.checkUpdate.enabled = function()
-		return not launch.exileForgeEdition and not launch.updateCheckRunning
+		return not launch.evryBuildEdition and not launch.updateCheckRunning
 	end
 	self.controls.forkLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {148, -26, 0, 16}, "")
 	self.controls.forkLabel.label = function()

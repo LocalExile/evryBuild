@@ -718,7 +718,7 @@ local ImportTabClass = newClass("ImportTab", "ControlHost", "Control", function(
 		end
 	end
 
-	-- ExileForge previews and character creation use the current build's normal export path.
+	-- evryBuild previews and character creation use the current build's normal export path.
 	LoadModule("Modules/LocalExile", self)
 
 	-- validate the status of the api the first time

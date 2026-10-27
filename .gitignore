@@ -41,7 +41,7 @@ runtime/SimpleGraphic/SimpleGraphic.log
 
 src/poe_api_response.json
 
-# ExileForge connection preferences and local build/test output
+# evryBuild connection preferences and local build/test output
 LocalExile.json
 LocalExile.json.tmp
 LocalExile.json.backup

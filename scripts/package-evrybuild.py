@@ -1,7 +1,7 @@
-"""Package this ExileForge fork as a standalone Windows application.
+"""Package this evryBuild fork as a standalone Windows application.
 
 Run from the repository root:
-    python scripts/package-exileforge.py --destination ../ExileForge-new
+    python scripts/package-evrybuild.py --destination ../evryBuild-app
 
 The checked-in compiled runtime is reused; this command does not download software, rebuild the native launcher,
 or read another PoB installation. Current fork source is copied, including uncommitted Lua changes.
@@ -21,9 +21,9 @@ import xml.etree.ElementTree as ET
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-BRAND = "ExileForge — Path of Building for LocalExile"
+BRAND = "evryBuild - POB for LocalExile"
 HOST = "Path{space}of{space}Building.exe"
-EXE = "ExileForge.exe"
+EXE = "evryBuild.exe"
 PRIVATE_NAMES = {"builds", "settings.xml", "localexile.json", "imgui.ini", "update", "installed.cfg",
                  "first.run", ".git", "logs", "captures", "backups", "__pycache__"}
 DEFAULT_FILES = {"LICENSE.md", "help.txt", "changelog.txt"}
@@ -88,7 +88,7 @@ def application_files(source: Path) -> tuple[str, dict[Path, Path]]:
                 raise PackageError(f"Unsupported default application file: {name}")
             input_path = output
         elif part == "runtime":
-            # The repository stores the launcher with literal {space} tokens; release folders use ExileForge.exe.
+            # The repository stores the launcher with literal {space} tokens; release folders use evryBuild.exe.
             input_path = Path("runtime") / output
             if name.as_posix() == HOST:
                 output = Path(EXE)
@@ -131,7 +131,7 @@ def source_revision(source: Path) -> str | None:
 
 def clean_stage(stage: Path, parent: Path) -> None:
     resolved = stage.resolve()
-    if resolved.parent != parent.resolve() or not resolved.name.startswith(".exileforge-package-") \
+    if resolved.parent != parent.resolve() or not resolved.name.startswith(".evrybuild-package-") \
             or stage.is_symlink() or getattr(stage, "is_junction", lambda: False)():
         raise PackageError("Refused to clean a staging folder outside the intended output parent.")
     shutil.rmtree(resolved)
@@ -141,7 +141,7 @@ def package(source_root: Path, destination: Path) -> dict:
     source = source_root.expanduser().resolve()
     target = destination.expanduser().resolve()
     if not source.is_dir():
-        raise PackageError("Choose the ExileForge source repository containing src, runtime and manifest.xml.")
+        raise PackageError("Choose the evryBuild source repository containing src, runtime and manifest.xml.")
     if target == source or source.is_relative_to(target) or any(target.is_relative_to(source / p) for p in ("src", "runtime")):
         raise PackageError("The destination cannot overwrite the source checkout or its application/runtime folders.")
     if target.exists() or destination.is_symlink():
@@ -149,7 +149,7 @@ def package(source_root: Path, destination: Path) -> dict:
     if not target.parent.is_dir():
         raise PackageError("The destination's parent folder must already exist.")
     version, files = application_files(source)
-    stage = Path(tempfile.mkdtemp(prefix=".exileforge-package-", dir=target.parent)).resolve()
+    stage = Path(tempfile.mkdtemp(prefix=".evrybuild-package-", dir=target.parent)).resolve()
     published = False
     try:
         hashes = {}
@@ -160,13 +160,13 @@ def package(source_root: Path, destination: Path) -> dict:
             hashes[relative.as_posix()] = hashlib.sha256(output.read_bytes()).hexdigest()
         (stage / "Builds").mkdir()
         release = ET.Element("PoBVersion")
-        ET.SubElement(release, "Version", number=version, branch="exileforge", platform="win32")
+        ET.SubElement(release, "Version", number=version, branch="evrybuild", platform="win32")
         ET.ElementTree(release).write(stage / "manifest.xml", encoding="utf-8", xml_declaration=True)
-        (stage / "ExileForge.cmd").write_bytes(
-            b'@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\nstart "" "%~dp0ExileForge.exe" "%~dp0Launch.lua"\r\n')
+        (stage / "evryBuild.cmd").write_bytes(
+            b'@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\nstart "" "%~dp0evryBuild.exe" "%~dp0Launch.lua"\r\n')
         record = {"application": BRAND, "upstreamVersion": version, "sourceRevision": source_revision(source),
                   "executable": EXE, "portableUserData": True, "filesSha256": hashes}
-        (stage / "ExileForge-package.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        (stage / "evryBuild-package.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         if target.exists():
             raise PackageError("The destination appeared while packaging; it was not overwritten.")
         os.rename(stage, target)
@@ -182,7 +182,7 @@ def package(source_root: Path, destination: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", required=True, type=Path, help="New portable application folder")
-    parser.add_argument("--source-root", type=Path, default=REPOSITORY, help="ExileForge checkout (default: this repository)")
+    parser.add_argument("--source-root", type=Path, default=REPOSITORY, help="evryBuild checkout (default: this repository)")
     args = parser.parse_args(argv)
     try:
         print(json.dumps(package(args.source_root, args.destination), indent=2))
