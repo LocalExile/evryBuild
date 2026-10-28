@@ -52,25 +52,28 @@ Start-Process -FilePath (Join-Path $evryBuildFolder 'evryBuild.exe') -ArgumentLi
 
 ## Start a compatible LocalExile receiver
 
-The receiver is required in addition to the normal game services.
-Use a LocalExile checkout containing the companion PoB receiver, with extracted client data and an existing local account.
-The receiver's scripts and C# implementation are maintained in that server repository, not here.
+Use a LocalExile checkout containing the companion importer, with its normal client/data setup and an existing local account.
+Gateway hosts the optional import listener on its own port; it starts and stops with the game server.
+The receiver implementation and its administrator scripts belong to that server repository.
 
-For sibling `evryBuild` and `evryPath` source checkouts, open the `evryPath` folder in File Explorer.
-Click its address bar, type `powershell`, then press Enter to open PowerShell in that server checkout.
-Run:
+Open the LocalExile checkout in File Explorer. Click its address bar, type `powershell`, and press Enter.
+From that server checkout's root, enable the listener and start the normal services:
 
 ```powershell
-.\scripts\dev\pob-server.ps1
+if (-not (Test-Path -LiteralPath 'config\pob-server.json')) {
+    Copy-Item -LiteralPath 'config\pob-server.example.json' -Destination 'config\pob-server.json'
+}
+.\scripts\dev\live.ps1 -NoClient
 ```
 
-For another setup, open PowerShell in that LocalExile checkout's root instead.
-The receiver's default address is `http://127.0.0.1:20496`.
-Its first run creates `config\pob-server.json` from its example and builds a separate receiver copy.
-Keep that window running while sending builds; Ctrl+C stops the receiver.
-The normal Auth, Patch and Gateway processes can keep running.
+The default import address is `http://127.0.0.1:20496`; game traffic keeps its separate port.
+`logs/live-gateway.log` should show `[pob] listening on http://127.0.0.1:20496`.
+No extra receiver process/window is needed.
+A missing config or `"enabled": false` disables imports.
+After editing the config, use `.\scripts\dev\live.ps1 -Only Gateway` to rebuild and restart it.
+If migrating the old standalone receiver, stop its window with Ctrl+C and replace its old path-heavy config with the current example.
 
-In a second PowerShell window in the same LocalExile checkout, issue a token for your existing local account:
+In the same PowerShell window, issue a token for your existing local account:
 
 ```powershell
 $accountName = Read-Host 'Existing LocalExile account name'
@@ -95,7 +98,10 @@ The server owner supplies the account and token when connecting to a remotely ma
    Names use 3–23 letters, digits, underscores or hyphens.
    Existing characters and saves cannot be replaced.
 5. Click **Preview** and read its result.
-   If it passes and the warnings are acceptable, click **Forge Character**.
+   “Ready with omissions” means supported parts can be imported but some features will be missing.
+   Check active-equipment and inactive-weapon-set counts, omitted item/enabled-gem counts and modifier/passive warnings.
+   If that result is acceptable, click **Forge Character**.
+   Changing the build, name or connection details requires another preview.
 6. After successful creation, log out to the game's login screen and log in again to refresh the character list.
    The imported character starts in Lioneye's Watch.
 
@@ -129,24 +135,18 @@ Remote connections require a valid HTTPS address and certificate.
 Plain HTTP is accepted only for `localhost`, `127.0.0.1`, or `[::1]`.
 Requests do not follow redirects, so enter the final server address.
 
-The receiver administrator configures its filesystem separately in its `config/pob-server.json`:
+The receiver shares the game's `data/` tree, `Game_SAVES_DB` database and `Game_LEAGUES` catalog.
+Administrators set those normal environment overrides before starting all services and issuing tokens.
+`Game_GGPK` selects the copied archive; by default it is beside `Game_CLIENT_EXE`, or `Client/Content.ggpk`.
+The UI never supplies server file paths.
 
-| Receiver setting | Purpose |
-|---|---|
-| `listenUrl` | Listener address and port |
-| `repositoryRoot` | Base for relative server paths; itself relative to the configuration file |
-| `dataFolder` | Extracted game data, including `tables` |
-| `databasePath` | Existing save database shared with the game services |
-| `clientGgpk` | Copied client archive used to validate passive connectivity |
-| `oozWorker` | Node decompression worker |
-| `nodeExecutable` | Node command or executable path |
-| `leagues` | Base leagues offered for imports |
-
-These folders belong to the server machine and are never sent by PoB.
-Absolute paths are supported by the receiver, and other paths resolve against its configured root.
-A TLS reverse proxy may forward a public HTTPS URL to a loopback receiver.
-If the public URL contains a path prefix, the proxy must remove that prefix before forwarding the API route.
-Direct receiver HTTPS additionally supports `certificatePath` and `certificatePasswordEnvironment`.
+`config/pob-server.json` contains only `enabled`, `listenUrl`, optional `allowedLeagues` (full names already offered by the game),
+and optional `certificatePath` / `certificatePasswordEnvironment` for direct HTTPS.
+Paths for certificates resolve from the server repository root.
+The listener defaults to loopback independently of the game's `Game_BIND` setting.
+A TLS reverse proxy can forward a public HTTPS URL to it; remove any public prefix before forwarding `/api/pob/...`.
+Old independent database/data/root/client/league JSON settings are rejected so imports cannot silently go to the wrong installation.
+Ruthless imports remain unsupported.
 
 ## Receiver API
 
@@ -176,7 +176,11 @@ Accept: application/json
 
 The client generates `code` with PoB's native XML export, Deflate and URL-safe Base64 encoding.
 Successful JSON replies have `ok: true`, `preview`, character/class/level/league information, item/gem/passive/mastery
-counts, `warnings`, and a `next` message.
+counts, `activeItems`, `inactiveWeaponItems`, `activeGems`, `inactiveWeaponGems`, `skippedItems`, `skippedGems`,
+`partial`, `warnings`, `warningCount`, `warningsTruncated`, and a `next` message.
+Counts cover the complete import even when warning details are shortened.
+The server renders bounded success replies before committing, below 64 KiB (the client transport limit is 128 KiB).
+Preview checks an entered name and account capacity without reserving either.
 Refused requests have `ok: false` and an `error` string.
 The dialog displays the result without logging the token or build contents.
 
@@ -187,10 +191,16 @@ Successful planning or export does not guarantee that a build is importable.
 The companion importer validates the selected active sets, native item modifiers, gem identities, levels, sockets,
 ordinary passives, mastery choices and passive connectivity against its pinned 3.29 client data.
 
-The current receiver refuses builds that require unsupported ascendancies or secondary ascendancies, tree jewels and
-cluster expansions, passive overrides, named bandit/Pantheon rewards, Ruthless rules, or unsupported item modifiers.
-It also refuses incompatible tree versions, invalid equipment/gems and existing character names.
-These refusals happen before creation; unsupported parts are not silently discarded.
+Unsupported ascendancies/secondary ascendancies, jewels and cluster expansions, overrides, special passive nodes,
+bandit/Pantheon rewards, unrepresentable items/modifiers and unavailable gems are skipped with warnings.
+The character remains unascended; disconnected tree branches are omitted and extra passive points are recomputed.
+Unavailable gems leave empty sockets without shifting the remaining gems or links.
+Normal saved modifier-roll records retain representable equipment; approximated native defence rolls are reported.
+PoB's planned effects can still differ from the server's implemented gameplay mechanics.
+
+Malformed exports, incompatible classes/tree versions, invalid native item or socket/gem layouts, excessive passive
+budgets, Ruthless rules, authentication errors and existing character names still prevent creation.
+The import never overwrites existing characters or saves.
 Quest completion and PoB's calculated totals, enemy assumptions and configuration conditions are not imported as game state.
 The server reports any extra ordinary passive points it grants for the selected allocation.
 

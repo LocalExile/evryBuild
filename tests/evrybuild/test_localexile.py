@@ -152,7 +152,7 @@ class IntegrationTests(unittest.TestCase):
             assert(body.account == 'Alice' and body.code == 'compressed-code' and body.league == 'Standard')
             assert(c.create.enabled() == false)
             launch.subScripts[1].callback('{"ok":true,"preview":true,"class":"Witch","level":20,"warnings":["Example warning"]}', nil, 200)
-            assert(c.results.buf:find('Preview passed',1,true))
+            assert(c.results.buf:find('Ready to import',1,true))
             assert(c.results.buf:find('Example warning',1,true))
             assert(c.token.buf == 'synthetic-token')
         ''')
@@ -162,11 +162,44 @@ class IntegrationTests(unittest.TestCase):
             M.Open(tab); local c = main.popup.controls
             c.account:SetText('Alice'); c.token:SetText('synthetic-token')
             c.name:SetText('x'); c.create.onClick(); assert(#workers == 0)
-            c.name:SetText('ImportedWitch'); c.create.onClick()
-            assert(workers[1].args[1]:match('/api/pob/characters$'))
-            launch.subScripts[1].callback('{"ok":true,"preview":false,"character":"ImportedWitch"}', nil, 200)
+            c.name:SetText('ImportedWitch'); c.create.onClick(); assert(#workers == 0)
+            c.preview.onClick()
+            launch.subScripts[1].callback('{"ok":true,"preview":true}', nil, 200)
+            assert(c.create.enabled())
+            c.create.onClick()
+            assert(workers[2].args[1]:match('/api/pob/characters$'))
+            launch.subScripts[2].callback('{"ok":true,"preview":false,"character":"ImportedWitch"}', nil, 200)
             assert(c.results.buf:find('Character created: ImportedWitch',1,true))
             assert(c.token.buf == '')
+        ''')
+
+    def test_partial_results_show_equipment_omissions_and_shortened_warnings(self):
+        self.lua.run(r'''
+            local description = M.Describe({preview=true, partial=true, items=2, gems=2,
+                activeItems=1, activeGems=1, inactiveWeaponItems=1, inactiveWeaponGems=1,
+                skippedItems=3, skippedGems=4, warnings={'Skipped unsupported modifier'},
+                warningsTruncated=true, warningCount=80})
+            assert(description:find('Ready with omissions',1,true))
+            assert(description:find('Active equipment: 1 items, 1 gems',1,true))
+            assert(description:find('Inactive weapon set: 1 items, 1 gems',1,true))
+            assert(description:find('Omitted: 3 items, 4 enabled gems',1,true))
+            assert(description:find('shortened (80 distinct warnings)',1,true))
+        ''')
+
+    def test_changing_the_build_or_destination_requires_another_preview(self):
+        self.lua.run(r'''
+            M.Open(tab); local c = main.popup.controls
+            c.account:SetText('Alice'); c.token:SetText('synthetic-token'); c.name:SetText('FirstName')
+            c.preview.onClick()
+            launch.subScripts[1].callback('{"ok":true,"preview":true}', nil, 200)
+            c.name:SetText('SecondName'); c.create.onClick()
+            assert(#workers == 1 and not c.create.enabled())
+            assert(c.results.buf:find('Preview this build',1,true))
+            c.preview.onClick()
+            launch.subScripts[2].callback('{"ok":true,"preview":true}', nil, 200)
+            common.base64.encode = function() return 'changed-code' end
+            c.create.onClick()
+            assert(#workers == 2 and not c.create.enabled())
         ''')
 
     def test_server_errors_and_worker_failures_are_visible(self):

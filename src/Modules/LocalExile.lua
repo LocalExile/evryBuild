@@ -156,12 +156,22 @@ end
 
 function M.Describe(response)
 	local lines = {
-		response.preview and "Preview passed. No character was created." or "Character created: " .. display(response.character),
+		response.preview and (response.partial and "Ready with omissions. No character was created." or "Ready to import. No character was created.")
+			or "Character created: " .. display(response.character) .. (response.partial and " (with omissions)" or ""),
 		string.format("%s level %s | League: %s", display(response.class), display(response.level), display(response.league)),
 		string.format("%s items, %s socketed gems, %s passives, %s masteries", display(response.items), display(response.gems), display(response.passives), display(response.masteries)),
 	}
+	if response.activeItems ~= nil then
+		lines[#lines + 1] = string.format("Active equipment: %s items, %s gems | Inactive weapon set: %s items, %s gems",
+			display(response.activeItems), display(response.activeGems), display(response.inactiveWeaponItems), display(response.inactiveWeaponGems))
+		lines[#lines + 1] = string.format("Omitted: %s items, %s enabled gems. Review modifier and passive warnings below.",
+			display(response.skippedItems), display(response.skippedGems))
+	end
 	if type(response.warnings) == "table" then
 		for _, warning in ipairs(response.warnings) do lines[#lines + 1] = "- " .. display(warning) end
+	end
+	if response.warningsTruncated then
+		lines[#lines + 1] = string.format("Warning details were shortened (%s distinct warnings). Equipment and gem counts cover the whole build.", display(response.warningCount))
 	end
 	if type(response.next) == "string" then lines[#lines + 1] = display(response.next) end
 	return table.concat(lines, "\n")
@@ -172,6 +182,7 @@ function M.Open(tab)
 	local preferences, preferencesWarning = M.ReadPreferences(preferencesPath)
 	local controls = { }
 	local busy, closed = false, false
+	local checkedRequest
 	local function field(name, label, y, initial, maximum)
 		controls[name .. "Label"] = new("LabelControl", { "TOPLEFT", nil, "TOPLEFT" }, { 20, y + 3, 0, 16 }, label)
 		controls[name] = new("EditControl", { "TOPLEFT", nil, "TOPLEFT" }, { 160, y, 490, 22 }, initial, nil, "%c", maximum)
@@ -185,7 +196,7 @@ function M.Open(tab)
 	field("name", "New character", 160, "", 23)
 	field("league", "League", 194, preferences.league, 128)
 	controls.note = new("LabelControl", { "TOPLEFT", nil, "TOPLEFT" }, { 20, 234, 0, 14 }, "URL, account and league are saved here; the API token stays in this dialog only.")
-	controls.results = new("EditControl", { "TOPLEFT", nil, "TOPLEFT" }, { 20, 262, 630, 214 }, preferencesWarning or "Preview first to check compatibility. Forge Character sends this build to your server.", nil, "%z", 32768, nil, 16)
+	controls.results = new("EditControl", { "TOPLEFT", nil, "TOPLEFT" }, { 20, 262, 630, 214 }, preferencesWarning or "Enter the character details, then Preview. Review omissions before using Forge Character.", nil, "%z", 32768, nil, 16)
 	local function result(text) controls.results:SetText(text) end
 	local function submit(preview)
 		if busy or closed then return end
@@ -203,6 +214,13 @@ function M.Open(tab)
 			return common.base64.encode(Deflate(tab.build:SaveDB("code"))):gsub("+", "-"):gsub("/", "_")
 		end)
 		if not ok or type(code) ~= "string" or code == "" then result("PoB could not export this build: " .. display(code)); return end
+		local fingerprint = json.encode({server, account, name, league, code, token})
+		if not preview and fingerprint ~= checkedRequest then
+			checkedRequest = nil
+			result("The build or connection details changed. Preview this build and character name before forging.")
+			return
+		end
+		checkedRequest = nil
 		local saved, saveError = M.SavePreferences(preferencesPath, { serverUrl = server, account = account, league = league })
 		if not saved then result("Could not save LocalExile connection settings: " .. display(saveError)); return end
 		busy = true
@@ -217,6 +235,7 @@ function M.Open(tab)
 					result(message)
 					return
 				end
+				if preview then checkedRequest = fingerprint end
 				result(M.Describe(response))
 				if not preview then controls.token:SetText("") end
 			end)
@@ -226,10 +245,12 @@ function M.Open(tab)
 	controls.close = new("ButtonControl", { "TOPLEFT", nil, "TOPLEFT" }, { 540, 498, 110, 26 }, "Close", function()
 		if busy then return end
 		closed = true
+		checkedRequest = nil
 		controls.token:SetText("")
 		main:ClosePopup()
 	end)
 	for _, name in ipairs({ "preview", "create", "close" }) do controls[name].enabled = function() return not busy end end
+	controls.create.enabled = function() return not busy and checkedRequest ~= nil end
 	return main:OpenPopup(670, 544, BRAND, controls, "preview", "serverUrl", "close")
 end
 
