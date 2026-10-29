@@ -20,6 +20,13 @@ Extract the entire portable ZIP to a writable folder and run **evryBuild.exe** o
 The package includes the native runtime and a self-contained Windows x64 exporter.
 Running it needs no .NET installation, Python, Git or separate PoB installation.
 Builds and preferences remain in the extracted folder. The package contains no personal builds or credentials.
+The ZIP includes this README and [the complete setup guide](docs/LocalExile.md).
+
+Use an existing local LocalExile installation with its normal extracted game data and an existing account.
+In **Import/Export Build → Export to LocalExile**, select the server's active `saves.db`,
+check the detected data folder, enter the account, a new character name and the league, then **Preview** and **Export**.
+Return to the game's character screen; log out and back in if the list has not refreshed.
+LocalExile can keep running during export. The exporter uses SQLite transactions and creates an online backup first.
 
 For developers packaging this source checkout, install the .NET 10 SDK, PowerShell and Python 3.10+, then run:
 
@@ -31,6 +38,8 @@ python scripts/package-evrybuild.py --destination '..\evryBuild-external-app'
 Choose a new destination. Packaging checks the exporter executable and source hashes against its build receipt,
 so stale helper builds cannot be included accidentally. Compiled output is ignored by Git.
 The previously published API-based portable is an older design; it does not contain this external exporter.
+Use a package built from this external implementation for an unmodified LocalExile server.
+See [local packaging and ZIP instructions](RELEASE.md) in the source repository.
 
 ## Development checks
 
@@ -44,6 +53,9 @@ python -m unittest discover -s scripts -p test_package_evrybuild.py -v
 
 [Validation instructions](tests/evrybuild/README.md) include optional real-data testing.
 Tests write only temporary databases. Unmodified upstream contract validation is separate from the game-client check.
+On 2026-10-29, the owner confirmed that an externally exported level-99 Witch loaded in unmodified LocalExile
+`b2737133`, with items and gems present and movement working. This verifies native loading of the tested build;
+individual gameplay effects still have the compatibility limits in the setup guide.
 
 ## Attribution and license
 

@@ -1,4 +1,18 @@
-# Contributing to Path of Building
+# Contributing to evryBuild - POB for LocalExile
+
+For this fork's external SQLite integration, start with [setup and compatibility](docs/LocalExile.md),
+[validation](tests/evrybuild/README.md) and [local packaging](RELEASE.md).
+The integration lives in `src/Modules/LocalExile.lua`, `src/Modules/LocalExileNative.lua` and
+`tools/LocalExile.Export/`; it must work with unmodified LocalExile, without a server API or network calls.
+Keep loadable items/gems/passives even when gameplay support is missing, and report encoding omissions explicitly.
+Compatibility rules belong to `tools/LocalExile.Export/compatibility.json`: mark unverified mechanics **unknown**,
+and attach evidence to new implemented/partial/unimplemented rules.
+
+The guide below is retained from upstream for planner development. Its upstream repository, branch, online sharing
+and update instructions describe Path of Building's workflow; evryBuild disables those application network features.
+For an evryBuild bug report, provide reproduction steps and a saved XML or pasted build code with private details removed.
+
+# Upstream planner development reference
 
 # Table of contents
 1. [Reporting bugs](#reporting-bugs)

@@ -32,7 +32,7 @@ APPLICATION_FILES = {"Launch.lua", "LaunchServer.lua", "GameVersions.lua", "Upda
 REQUIRED_OUTPUTS = {EXE, "Launch.lua", "GameVersions.lua", "Modules/Main.lua", "Classes/ImportTab.lua",
                     "Modules/LocalExile.lua", "LICENSE.md", "help.txt", "changelog.txt", "lua51.dll",
                     "SimpleGraphic.dll", "lcurl.dll", "libcurl.dll", "zlib1.dll", "lua/dkjson.lua", "lua/base64.lua",
-                    "Modules/LocalExileNative.lua", "LocalExile/evryBuild.Export.exe"}
+                    "Modules/LocalExileNative.lua", "LocalExile/evryBuild.Export.exe", "README.md", "docs/LocalExile.md"}
 
 
 class PackageError(Exception):
@@ -112,6 +112,8 @@ def application_files(source: Path) -> tuple[str, dict[Path, Path]]:
     for module in (Path("Modules/LocalExile.lua"), Path("Modules/LocalExileNative.lua")):
         if module.as_posix().casefold() not in names:
             add(Path("src") / module, module)
+    for document in (Path("README.md"), Path("docs/LocalExile.md")):
+        add(document, document)
     exporter = Path("runtime/LocalExile/evryBuild.Export.exe")
     if not (source / exporter).is_file():
         raise PackageError("Build the bundled local exporter first: .\\scripts\\build-exporter.ps1")

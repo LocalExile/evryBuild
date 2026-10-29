@@ -7,11 +7,29 @@ The exporter does not modify the game archive or install server code.
 
 ## Run the portable application
 
-Extract the complete ZIP to a writable folder, open its `evryBuild` folder and run `evryBuild.exe`.
+Extract the complete ZIP to a writable folder, open the extracted folder containing `evryBuild.exe`, and run it.
 The included `evryBuild.cmd` is an alternative launcher. Do not run from inside the ZIP.
 The exporter is a self-contained Windows x64 executable included under `LocalExile/`.
 No installed .NET runtime, Python, Git, or separate PoB is required by the portable application.
 For developer packaging, use the commands in [README](../README.md).
+
+## Before the first export
+
+- Use a normal, working local LocalExile installation and its supported game client (the tested reference uses 3.29.3b).
+  Follow that installation's `Agents/GettingStarted.md` for server setup, data extraction and account registration.
+  evryBuild does not create accounts or replace LocalExile's normal startup procedure.
+- Start LocalExile normally and identify the database it actually uses. The Gateway startup log prints
+  `[gateway] saves: ...`; in a source installation using `scripts/dev/live.ps1`, look in `logs/live-gateway.log`.
+  The default is `data/saves.db`, but `Game_SAVES_DB` can point elsewhere. Select the path from the running server,
+  especially if you have several installations or save databases.
+- Keep the database on a local disk with write access. Also allow creation of `evryBuild-backups/` beside it.
+  The extracted game data should come from the same installation and client version as the server.
+- You may leave the server running. Finish the current play session and return to character selection before
+  testing a new export. No extra PoB process, listener or server configuration is needed.
+
+The export dialog has **Save database**, **Game data folder**, **Existing account**, **New character** and **League**.
+If it asks for a server URL or API token, you are running the older API-based portable.
+Extract a new external build to a separate folder; the published API-era ZIP does not update itself to this design.
 
 ## Export a build
 
@@ -23,9 +41,11 @@ For developer packaging, use the commands in [README](../README.md).
 4. The **Game data folder** is detected beside the database when it contains `tables/` and `item-types.json`.
    If your database is elsewhere, click its Browse button and choose `item-types.json` in the server's data folder.
    The dialog selects that file's containing folder. These are the normal extracted files from LocalExile setup.
-5. Inspect lists the existing account names and leagues found on existing characters.
+5. Choosing a database runs inspection; **Inspect DB** repeats it if you entered the path manually.
+   Inspection lists the existing account names and leagues found on existing characters.
    Enter the **Existing account** that should own the new character.
-   With one account, the first inspected account is filled automatically.
+   With one account, it is filled automatically. With several accounts, type the intended name from the list.
+   A previously selected name is retained only if it exists in the chosen database.
    Account passwords and API tokens are neither needed nor read.
 6. Enter an unused **New character** name: 3–23 ASCII letters, digits, underscores or hyphens.
    Enter the exact **League** offered by your running game server, normally `Standard`.
@@ -37,12 +57,30 @@ For developer packaging, use the commands in [README](../README.md).
    A changed build, account, destination, league or prepared save requires another preview.
 9. Return to the game's character screen to refresh its list.
    If the character does not appear, log out to the login screen and log in again.
-   The imported character starts in Lioneye's Watch.
+   Select the new character and click **Play**. The imported character starts in Lioneye's Watch.
+   Press **I** to inspect equipment and socketed gems, **P** to inspect passives, and click the ground to check movement.
+
+For example, if the Gateway log shows `C:\LocalExile\data\saves.db`, choose that file. Normally the data folder
+will become `C:\LocalExile\data`. Use your existing account name, an unused name such as `ImportedWitch`,
+and `Standard` if that is the league offered by your server. Your password is used only at the game's login screen.
 
 The dialog saves only the database/data paths, account name and league in `LocalExile.json` in the active user folder.
 Legacy server URL and token fields are ignored and are removed when preferences are next saved.
 If an export loses its response, refresh the character list before trying again.
 The new name is refused on retry if the transaction already committed.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| No accounts listed | Check the Gateway's database path and select that exact file. If it has no accounts yet, register one using LocalExile's normal account setup, then click **Inspect DB**. |
+| Game data folder is empty or rejected | Click its **Browse** button and select `item-types.json` in the server's extracted `data` folder. The folder must also contain `tables/` and the files produced by normal LocalExile data extraction. |
+| The save database is busy | Wait for the server's save to finish and retry. If it remains busy, close any SQLite editor holding a write transaction. Do not delete `-wal` or `-shm` files. |
+| Preview is required again | Click **Preview** after changing the build, account, character name, league, database or data folder, review the result, then export. |
+| Character does not appear | Return to the login screen, log in to the selected account again, and select the exact league used for export. If still absent, compare the selected database with the Gateway log. |
+| Export response was lost or timed out | Refresh the character list before retrying. A successful write may already have committed; duplicate names are refused. |
+| Items load but effects or skills do not work | Read the compatibility summary and full `.export.json` report beside the backup. Loadable entries remain even when gameplay support is partial, missing or unknown. |
+| The bundled exporter cannot start | Extract the complete portable ZIP again to a writable local folder. Keep `LocalExile/evryBuild.Export.exe` with the application; a source checkout must run `scripts/build-exporter.ps1` before use. |
 
 ## Database safety
 
@@ -110,6 +148,16 @@ Extra ordinary passive points required by a valid retained tree are reported.
 Malformed builds, incompatible tree/class versions, invalid native layouts, impossible gem values, excessive passive
 budgets, Ruthless imports and name/account failures remain errors before creation.
 The exporter targets the server's 3.29.3b extracted data; PoB calculation parity is not promised.
+
+## Validated native result
+
+On 2026-10-29, an isolated database was populated through the packaged evryBuild Lua worker and the bundled exporter,
+then opened by a clean, unmodified LocalExile checkout at `b2737133477b23f27a98b27196189bcad5881bc6`.
+The exported level-99 Witch contained 16 items, 30 gems, 100 ordinary passives and 9 masteries.
+The owner confirmed in the native game client that the character loaded, items and gems appeared, and movement worked.
+This is a loading/equipment/movement acceptance result for that build; it does not certify every imported effect,
+passive interaction, skill or PoB calculation. The automated and manual checks are described in
+`tests/evrybuild/README.md` in the source repository.
 
 ## Repository boundary
 

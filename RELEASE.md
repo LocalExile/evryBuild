@@ -1,123 +1,89 @@
-# How to release Path of Building Community
+# Package evryBuild - POB for LocalExile
 
-## Prerequisites
+This guide builds the external SQLite edition and prepares a local Windows x64 portable ZIP.
+It does not publish a release, push Git changes or modify a LocalExile installation.
+The earlier API-based ZIP is a different implementation; do not label it as the external exporter.
 
-## Choosing a new version number
+## Build requirements
 
-Path of Building Community follows [Semantic Versioning](https://semver.org/).
+Use Windows x64 with the .NET 10 SDK, PowerShell, Python 3.10+ and this evryBuild source checkout.
+The checked-in planner runtime is reused; a separate PoB installation or LocalExile checkout is not needed to package it.
+The exporter is self-contained, so users of the resulting ZIP do not need .NET or Python installed.
 
-## General Application updates
+Open PowerShell in the evryBuild repository root (the folder containing `src`, `runtime`, `tools` and `manifest.xml`).
+For example, if you cloned it to `C:\src\evryBuild`, first run:
 
-Releases are done via GitHub actions in order to simplify release note generation.
+```powershell
+Set-Location 'C:\src\evryBuild'
+```
 
-Steps:
-1. First, update any GGPK files and tree files needed in the dev branch.  This will minimize what you have to update later.
-2. [Navigate to the "Release new version" action](https://github.com/PathOfBuildingCommunity/PathOfBuilding/actions/workflows/release.yml)
-3. Click "Run workflow" on the right, and fill in the values
-    - Run the workflow from the 'dev' branch
-    - Fill in the [most recent tag](https://github.com/PathOfBuildingCommunity/PathOfBuilding/tags)
-    - Choose a new version number (see above)
-4. This will run and create a new branch and PR so you can review the changes, making tweaks to any of the release notes that don't make sense
-5. If you changed any files after the PR was created, you'll have to update [the manifest file](manifest.xml)
-    - Run `python3 update_manifest.py --in-place` from the root directory of PoB
-6. Create a tag for the new release either by creating a release on GitHub, or running (for example) `git tag v2.4.0; git push --tags`
-7. Merge the PR into `master`.  PoB will take a few minutes before it can find the update
+Replace that example path with your actual checkout. Confirm the prerequisites:
 
-## GGPK Data updates
+```powershell
+dotnet --version
+python --version
+$PSVersionTable.PSVersion
+```
 
-Updating data from the GGPK uses the PoB exporter (see CONTRIBUTING.md#exporting-ggpk-data-from-path-of-exile).  Run each script in order, then check the differences in data to make sure nothing is missing that is expected.
+The SDK should report `10.x`, and Python should report `3.10` or newer.
 
-## Skill tree updates
+## Build and validate
 
-Skill tree updates require JSON data, usually released by GGG a few days before a new
-league starts, in forum posts like
-[this one](https://www.pathofexile.com/forum/view-thread/3147480).
-The JSON data and required skill tree assets should come in a `.zip` archive.
+Run these commands from that same PowerShell window, stopping if any command fails:
 
-Steps:
-1. Download the `.zip` archive.
-2. Create a new directory in `./src/TreeData` with the following schema:
-    `<major_league_version>_<minor_league_version>`. For alternate or ruthless trees, add the suffixing as appropriate.
-    For 3.14, the correct directory name would be `3_14`.
-    For 3.25 Ruthless 'alternate' tree, the correct directory name would be `3_25_ruthless_alternate`.
-3. Copy the following file from the `.zip` archive root to the new directory:
-   * `data.json`.
-   Note for Ruthless for example, the exported data from GGG will be `ruthless.json`, and this file should be copied into the new directory and renamed to `data.json` for the following steps to pick it up.
-4. Copy the following files from the `assets` subdirectory in the `.zip` archive to the
-    new directory:
-    * `mastery-active-effect-3.png`
-    * `mastery-active-selected-3.png`
-    * `mastery-connected-3.png`
-    * `mastery-disabled-3.png`
-    * `skills-3.jpg`
-    * `skills-disabled-3.jpg`.
-5. Run `./fix_ascendancy_positions.py`.
-6. Open `./src/GameVersions.lua` and update `treeVersionList`, `treeVersions`, and `poePlannerVersions`.  The latter can be found via https://cdn.poeplanner.com/json/versions.json
-   according to the file's format. This is important, otherwise the JSON data converter
-   won't trigger.
-7. Restart Path of Building Community. This should result in a new file `tree.lua`.
-8. Remove `data.json` and `sprites.json` from the new directories. Do not commit these files.
+```powershell
+.\scripts\build-exporter.ps1
+dotnet test tests/LocalExile.Export.Tests
+python tests/evrybuild/test_localexile.py -v
+python tests/evrybuild/test_exporter.py -v
+python -m unittest discover -s scripts -p test_package_evrybuild.py -v
+```
 
-## Timeless Jewel updates
+The build writes `runtime/LocalExile/evryBuild.Export.exe` and a receipt containing its SHA-256 and source hashes.
+Packaging refuses a missing, changed or stale exporter. Rebuild it after changing the exporter source or notices.
+See [validation instructions](tests/evrybuild/README.md) for optional real-data checks and the native game result.
+Without explicit real-data paths, that one optional test is skipped; all other checks must pass.
 
-The Timeless jewels determine what effect they have on a node based on the "Look up Tables" in \src\Data\TimelessJewelData
-The LuTs for the Timeless jewels come from https://github.com/Regisle/TimelessJewelData
-More information can be found there.
+## Create a clean portable ZIP
 
-The LuTs PoB uses are slightly different due to historical reasons, and so they can be generated using the generator from there.
+Run the following in PowerShell from the repository root. It creates a new timestamped folder under `dist`.
+Existing applications and profiles are never overwritten. The ZIP has one top-level `evryBuild` folder.
 
+```powershell
+$ErrorActionPreference = 'Stop'
+$packageRoot = Join-Path (Get-Location).Path ('dist\external-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Path $packageRoot | Out-Null
+$appFolder = Join-Path $packageRoot 'evryBuild'
+python scripts/package-evrybuild.py --destination $appFolder
+if ($LASTEXITCODE -ne 0) { throw 'Portable packaging failed.' }
+$zipPath = Join-Path $packageRoot 'evryBuild-Portable-Windows-x64.zip'
+Compress-Archive -LiteralPath $appFolder -DestinationPath $zipPath -CompressionLevel Optimal
+$zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$zipHash + '  evryBuild-Portable-Windows-x64.zip' | Set-Content -LiteralPath ($zipPath + '.sha256') -Encoding ascii
+Write-Output $zipPath
+Write-Output $zipHash
+```
 
--------------------------------------------------------------------------------------------------------
-Steps to Generate Timeless Jewel LuTs for PoB:
-1. Clone repo from https://github.com/Regisle/TimelessJewelData/tree/Generator
-2. Open DatafileGenerator.sln in Visual Studio
-3. Grab new data.json tree file
-4. Grab new AlternatePassiveAdditions.json and AlternatePassiveSkills.json from https://snosme.github.io/poe-dat-viewer/ and clicking on 'Export data' in the top right
-5. Run following commands in the Visual Studio command prompt order, adjusting for file location
-	dotnet run --project DataFileGenerator
-	E:\PoB Dev Work\TimelessJewelData\AlternatePassiveAdditions.json
-	E:\PoB Dev Work\TimelessJewelData\AlternatePassiveSkills.json
-	E:\PoB Dev Work\GGG Skill Tree\data.json
-	E:\PoB Dev Work\PathOfBuildingCommunity\src\Data\TimelessJewelData
-6. Choose Compressed
-7. Replace updated Files in \src\Data\TimelessJewelData
+The package includes the current planner source/runtime, self-contained exporter, setup guide and license notices.
+It excludes personal builds, preferences, account tokens, save databases and server/game files.
+`evryBuild-package.json` records the source commit and SHA-256 of each copied application file.
+Packaging uses current files, including uncommitted source changes, so finalize and review the source before preparing
+an artifact intended for distribution. The recorded source commit alone does not describe an uncommitted change.
 
-Alt tab out and back in to make right click paste work
-------------------------------------------------------------------------------------------------------- 
+## Check the extracted package
 
-If updated this way making a PR to https://github.com/Regisle/TimelessJewelData with the files in the format it uses is appreciated.
-To do this follow steps 1-5 the same and choose the other option for step 6.
+Extract the ZIP to a new writable folder, open its `evryBuild` folder and run `evryBuild.exe`.
+Confirm **Import/Export Build → Export to LocalExile** shows **Save database** and **Game data folder**,
+with no URL or token fields. `README.md` and `docs/LocalExile.md` must be present in the extracted package.
+Follow [the setup guide](docs/LocalExile.md) against a separate test database before distributing a newly changed converter.
+The recorded native acceptance verifies a level-99 Witch on unmodified LocalExile `b2737133`; later converter changes
+need their own appropriate regression checks.
 
+Before sharing an artifact, confirm that `Builds/` is empty and there is no `Settings.xml` or `LocalExile.json`.
+Use the SHA-256 file to identify the ZIP you validated. Publication is a separate owner action.
 
-## Installer creation
+## Updating planner game data
 
-Path of Building Community offers both installable and standalone releases. They're
-built with automation scripts found in the repository described below.
-
-Prerequisites:
-- Have Git 2.21.0+ installed and `git` in your `PATH`.
-  Verify by running `git --version`.
-- Have NSIS 3.07+ installed and `makensis` in your `PATH`.
-  Verify by running `makensis /version`.
-  You may have to add this manually after installation.
-- Have Python 3.7+ installed and `python` in your `PATH`.
-  Verify by running `python --version`.
-- NB: You don't have to create a virtual environment, as you don't need to install any
-  third-party libraries.
-
-Installation:
-- Clone this repository to a directory of your choice:
-
-      git clone https://github.com/PathOfBuildingCommunity/PathOfBuildingInstaller.git
-- Please note that you might not have access to this repository if you're not a Path of
-  Building Community maintainer.
-  
-Usage:
-
-      python make_release.py
-- To change the output folder or repository URL, simply edit the script file.
-- Created installers can be found in the `./Dist` directory.
-- NB: Output like the following can be safely ignored. This is due to NSIS complaining
-about including an empty directory.
-
-      AppData\Local\Temp\tmp5fo1ha19\Update -> no files found. (NSIS/Setup.nsi:158)
+Planner data maintenance still follows the relevant GGPK export and tree instructions in [CONTRIBUTING.md](CONTRIBUTING.md).
+This does not change the LocalExile native save contract automatically. Keep conversion and compatibility rules tied to
+verified server/client revisions, and mark unverified mechanics unknown rather than inferring support from a table entry.

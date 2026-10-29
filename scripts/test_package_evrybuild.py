@@ -37,6 +37,9 @@ class PackageTests(unittest.TestCase):
         (self.source / "src/Modules/LocalExile.lua").write_text("current fork integration", encoding="utf-8")
         (self.source / "runtime/msvcr100.dll").write_bytes(b"compatibility runtime")
         (self.source / "src/Modules/LocalExileNative.lua").write_text("local process bridge")
+        (self.source / "README.md").write_text("Portable application quick start", encoding="utf-8")
+        (self.source / "docs").mkdir()
+        (self.source / "docs/LocalExile.md").write_text("Database export setup instructions", encoding="utf-8")
         exporter = self.source / "runtime/LocalExile/evryBuild.Export.exe"
         exporter.parent.mkdir(parents=True)
         exporter.write_bytes(b"synthetic exporter runtime")
@@ -103,6 +106,20 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(record["portableUserData"])
         self.assertIn("Modules/LocalExile.lua", record["filesSha256"])
         self.assertIn('"%~dp0evryBuild.exe" "%~dp0Launch.lua"', (self.target / "evryBuild.cmd").read_text())
+
+    def test_portable_includes_current_setup_instructions_and_refuses_missing_guide(self):
+        guide = self.source / 'docs/LocalExile.md'
+        expected = guide.read_bytes()
+        guide.unlink()
+        with self.assertRaisesRegex(package_module.PackageError, 'required application file'):
+            self.package()
+        self.assertFalse(self.target.exists())
+        guide.write_bytes(expected)
+        self.package()
+        self.assertEqual(expected, (self.target / 'docs/LocalExile.md').read_bytes())
+        self.assertEqual((self.source / 'README.md').read_bytes(), (self.target / 'README.md').read_bytes())
+        record = json.loads((self.target / 'evryBuild-package.json').read_text())
+        self.assertEqual(hashlib.sha256(expected).hexdigest(), record['filesSha256']['docs/LocalExile.md'])
 
     def test_an_existing_application_or_profile_is_never_overwritten(self):
         self.target.mkdir()

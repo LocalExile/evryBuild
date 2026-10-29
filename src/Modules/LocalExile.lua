@@ -113,9 +113,12 @@ function M.Open(tab)
             busy=false; if closed then return end
             if err then result(err); return end
             if reply.dataFolder then controls.dataFolder:SetText(reply.dataFolder) end
-            local present=false
-            for _,account in ipairs(reply.accounts or {}) do if account==trim(controls.account.buf) then present=true end end
-            if not present then controls.account:SetText((reply.accounts or {})[1] or "") end
+            local accounts=reply.accounts or {}
+            local selected=trim(controls.account.buf):lower()
+            local matched
+            for _,account in ipairs(accounts) do if account:lower()==selected then matched=account; break end end
+            -- A database can belong to several people. Never silently choose its first account.
+            controls.account:SetText(matched or (#accounts==1 and accounts[1]) or "")
             result("Accounts: "..table.concat(reply.accounts or {},", ").."\nExisting leagues: "..table.concat(reply.leagues or {},", ")..
                 "\nServer version: "..display(reply.serverVersion).."\n"..display(reply.next))
         end)

@@ -200,6 +200,20 @@ class IntegrationTests(unittest.TestCase):
             assert(#workers==1 and not c.create.enabled())
         ''')
 
+    def test_database_inspection_requires_an_explicit_choice_between_accounts(self):
+        self.lua.run('''
+            M.Open(tab); local c=main.popup.controls
+            c.account:SetText('UnrelatedPreviousAccount'); c.inspect.onClick()
+            launch.subScripts[1].callback('{"ok":true,"accounts":["Alice","Bob"],"leagues":["Standard"]}')
+            assert(c.account.buf=='')
+            c.account:SetText('bOB'); c.inspect.onClick()
+            launch.subScripts[2].callback('{"ok":true,"accounts":["Alice","Bob"],"leagues":["Standard"]}')
+            assert(c.account.buf=='Bob')
+            c.account:SetText(''); c.inspect.onClick()
+            launch.subScripts[3].callback('{"ok":true,"accounts":["Alice"],"leagues":["Standard"]}')
+            assert(c.account.buf=='Alice')
+        ''')
+
     def test_preview_key_is_sent_only_for_confirmed_export(self):
         self.lua.run('''
             M.Open(tab); local c=main.popup.controls

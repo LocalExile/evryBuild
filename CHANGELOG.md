@@ -1,5 +1,17 @@
 # Changelog
 
+## evryBuild external LocalExile integration — 2026-10-29
+
+- Export the active build directly to an existing local LocalExile SQLite database from **Import/Export Build**.
+- Bundle the one-shot Windows x64 exporter; no LocalExile API, token, listener or source changes are required.
+- Preview conversion/compatibility findings, back up SQLite online, and atomically create a new character without replacing saves.
+- Retain loadable items, gems and passives with partial, missing or unknown gameplay support; report native encoding omissions.
+- Require explicit account selection when inspecting a database with several accounts and no matching previous selection.
+- Include the setup guide in the portable package; document normal upstream setup, database selection and troubleshooting.
+- Validate native character loading, visible equipment/gems and movement against unmodified LocalExile `b2737133`.
+
+The upstream planner history follows. Its online features are disabled in this edition.
+
 ## [v2.67.2](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/tree/v2.67.2) (2026/08/07)
 
 [Full Changelog](https://github.com/PathOfBuildingCommunity/PathOfBuilding/compare/v2.67.1...v2.67.2)
