@@ -51,3 +51,6 @@ __pycache__/
 *.pyc
 /artifacts/
 /dist/
+**/bin/
+**/obj/
+/runtime/LocalExile/

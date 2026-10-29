@@ -1,4 +1,4 @@
-"""Exercise evryBuild with its bundled Lua, JSON and curl libraries.
+"""Exercise the external exporter UI with the bundled LuaJIT runtime and local pipe bridge.
 
 Run from the repository root on Windows:
   python tests/evrybuild/test_localexile.py -v
@@ -6,12 +6,10 @@ Run from the repository root on Windows:
 """
 import argparse
 import ctypes
-import http.server
 import json
 import os
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
 
@@ -69,6 +67,7 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.lua = Lua(INSTALLATION)
         self.addCleanup(self.lua.close)
+        self.lua.run("sourceRoot = " + json.dumps((REPOSITORY / "src").as_posix()))
         self.lua.run("modulePath = " + json.dumps((REPOSITORY / "src/Modules/LocalExile.lua").as_posix()))
         self.lua.run("userPath = " + json.dumps(Path(self.temporary.name).as_posix() + "/"))
         self.lua.run(r'''
@@ -94,6 +93,8 @@ class IntegrationTests(unittest.TestCase):
             end
             common = { base64 = {encode=function(value) return 'compressed-code' end} }
             function Deflate(value) return value end
+            function GetRuntimePath() return install end
+            function GetScriptPath() return sourceRoot end
             launch = {subScripts={}}
             workers = {}
             function LaunchSubScript(script, functions, callbacks, ...)
@@ -104,50 +105,6 @@ class IntegrationTests(unittest.TestCase):
             build = { SaveDB=function(self, mode) assert(mode == 'code'); return '<PathOfBuilding />' end }
             tab = {build=build, controls={sectionBuild={height=182}, importCodeMode={}}}
             M = assert(loadfile(modulePath))()
-        ''')
-
-    def test_visible_button_and_dialog_token_masking(self):
-        self.lua.run(r'''
-            M.Attach(tab)
-            assert(tab.controls.localExileSend.kind == 'ButtonControl')
-            assert(tab.controls.localExileSend.buf == 'Forge Character')
-            assert(main.windowTitle == 'evryBuild - POB for LocalExile')
-            tab.controls.localExileSend.onClick()
-            assert(main.popup.title == 'evryBuild')
-            assert(main.popup.controls.intro.buf == 'POB for LocalExile')
-            assert(main.popup.controls.create.buf == 'Forge Character')
-            assert(main.popup.controls.token.protected == true)
-            assert(main.popup.controls.token.buf == '')
-            assert(tab.controls.sectionBuild.height == 222)
-        ''')
-
-    def test_url_validation(self):
-        self.lua.run(r'''
-            for _, url in ipairs({'http://127.0.0.1:20496', 'http://localhost:20496/', 'http://[::1]:20496', 'https://my-server.example/pob'}) do
-                assert(M.ValidateServer(url), url)
-            end
-            for _, url in ipairs({'http://example.com', 'http://localhost.evil.example', 'https://user:password@example.com', 'ftp://example.com', 'https://example.com?x=1', 'https://example.com#x', 'http://127.0.0.1:99999', 'https://example.com/'..string.char(13)..'Injected'}) do
-                assert(not M.ValidateServer(url), url)
-            end
-        ''')
-
-    def test_request_and_worker_refuse_non_localexile_routes_without_starting_network(self):
-        self.lua.run(r'''
-            local worker = assert(loadstring(M.RequestScript))
-            for _, url in ipairs({
-                'https://www.pathofexile.com/character-window/get-items',
-                'https://pobb.in/example', 'http://127.0.0.1:20496/other',
-                'http://127.0.0.1:20496/api/pob/preview?next=external',
-                'https://example.com/%2e%2e/api/pob/preview',
-                'http://example.com/api/pob/preview'
-            }) do
-                local failure
-                M.Request(url, 'synthetic-token', {}, function(reply, err) assert(not reply); failure=err end)
-                assert(failure and #workers == 0, url)
-                local body, err, status = worker(url, 'synthetic-token', '{}')
-                assert(not body and err and status == 0, url)
-            end
-            assert(M.ValidateRequestUrl('https://my-localexile.example/pob/api/pob/preview'))
         ''')
 
     def test_generic_downloads_updates_and_browser_links_never_start_workers(self):
@@ -222,154 +179,81 @@ class IntegrationTests(unittest.TestCase):
         for file in files:
             self.lua.run('assert(loadfile(' + json.dumps(file.as_posix()) + '))')
 
-    def test_only_localexile_has_an_http_transport(self):
-        roots = [REPOSITORY / 'src/Classes', REPOSITORY / 'src/Modules']
-        files = [p for root in roots for p in root.glob('*.lua')] + list((REPOSITORY / 'src').glob('*.lua'))
-        transports = [p for p in files if 'lcurl.safe' in p.read_text(encoding='utf-8')]
-        # HeadlessWrapper only has a compatibility require-name check, not a transport.
-        self.assertEqual(sorted(p.name for p in transports), ['HeadlessWrapper.lua', 'LocalExile.lua'])
-
-    def test_preferences_only_save_nonsecret_fields(self):
-        self.lua.run(r'''
-            local path = userPath .. 'LocalExile.json'
-            assert(M.SavePreferences(path, {serverUrl='https://one.example', account='Alice', league='Standard', token='never-persist-this'}))
-            assert(M.SavePreferences(path, {serverUrl='https://two.example', account='Bob', league='evryLeague', token='second-secret'}))
-            local preferences = M.ReadPreferences(path)
-            assert(preferences.serverUrl == 'https://two.example')
-            assert(preferences.account == 'Bob' and preferences.league == 'evryLeague')
-            local f = assert(io.open(path, 'rb')); local saved = f:read('*a'); f:close()
-            assert(not saved:find('secret',1,true) and not saved:find('token',1,true))
+    def test_external_dialog_has_database_fields_and_no_api_credentials(self):
+        self.lua.run('''
+            M.Attach(tab); assert(tab.controls.localExileSend.buf == 'Export to LocalExile')
+            M.Open(tab); local c=main.popup.controls
+            assert(c.database and c.dataFolder and c.databaseBrowse and c.dataBrowse)
+            assert(not c.serverUrl and not c.token and not c.create.enabled())
         ''')
 
-    def test_preview_exports_active_build_and_does_not_send_create(self):
-        self.lua.run(r'''
-            M.Open(tab)
-            local c = main.popup.controls
-            c.account:SetText('Alice'); c.token:SetText('synthetic-token')
+    def test_preview_and_changed_destination_guard_export(self):
+        self.lua.run('''
+            M.Open(tab); local c=main.popup.controls
+            c.database:SetText('C:/server/data/saves.db'); c.account:SetText('Alice'); c.name:SetText('NewName')
             c.preview.onClick()
-            assert(#workers == 1)
-            local worker = workers[1]
-            assert(worker.args[1] == 'http://127.0.0.1:20496/api/pob/preview')
-            assert(worker.args[2] == 'synthetic-token')
-            local body = require('dkjson').decode(worker.args[3])
-            assert(body.account == 'Alice' and body.code == 'compressed-code' and body.league == 'Standard')
-            assert(c.create.enabled() == false)
-            launch.subScripts[1].callback('{"ok":true,"preview":true,"class":"Witch","level":20,"warnings":["Example warning"]}', nil, 200)
-            assert(c.results.buf:find('Ready to import',1,true))
-            assert(c.results.buf:find('Example warning',1,true))
-            assert(c.token.buf == 'synthetic-token')
-        ''')
-
-    def test_create_validates_name_and_clears_token_after_success(self):
-        self.lua.run(r'''
-            M.Open(tab); local c = main.popup.controls
-            c.account:SetText('Alice'); c.token:SetText('synthetic-token')
-            c.name:SetText('x'); c.create.onClick(); assert(#workers == 0)
-            c.name:SetText('ImportedWitch'); c.create.onClick(); assert(#workers == 0)
-            c.preview.onClick()
-            launch.subScripts[1].callback('{"ok":true,"preview":true}', nil, 200)
+            local payload=require('dkjson').decode(workers[1].args[3])
+            assert(payload.operation=='preview' and payload.code and not payload.token and not payload.serverUrl)
+            launch.subScripts[1].callback('{"ok":true,"preview":true,"previewKey":"checked"}')
             assert(c.create.enabled())
-            c.create.onClick()
-            assert(workers[2].args[1]:match('/api/pob/characters$'))
-            launch.subScripts[2].callback('{"ok":true,"preview":false,"character":"ImportedWitch"}', nil, 200)
-            assert(c.results.buf:find('Character created: ImportedWitch',1,true))
-            assert(c.token.buf == '')
+            c.name:SetText('ChangedName'); c.create.onClick()
+            assert(#workers==1 and not c.create.enabled())
         ''')
 
-    def test_partial_results_show_equipment_omissions_and_shortened_warnings(self):
-        self.lua.run(r'''
-            local description = M.Describe({preview=true, partial=true, items=2, gems=2,
-                activeItems=1, activeGems=1, inactiveWeaponItems=1, inactiveWeaponGems=1,
-                skippedItems=3, skippedGems=4, warnings={'Skipped unsupported modifier'},
-                warningsTruncated=true, warningCount=80})
-            assert(description:find('Ready with omissions',1,true))
-            assert(description:find('Active equipment: 1 items, 1 gems',1,true))
-            assert(description:find('Inactive weapon set: 1 items, 1 gems',1,true))
-            assert(description:find('Omitted: 3 items, 4 enabled gems',1,true))
-            assert(description:find('shortened (80 distinct warnings)',1,true))
-        ''')
-
-    def test_changing_the_build_or_destination_requires_another_preview(self):
-        self.lua.run(r'''
-            M.Open(tab); local c = main.popup.controls
-            c.account:SetText('Alice'); c.token:SetText('synthetic-token'); c.name:SetText('FirstName')
+    def test_preview_key_is_sent_only_for_confirmed_export(self):
+        self.lua.run('''
+            M.Open(tab); local c=main.popup.controls
+            c.database:SetText('C:/server/data/saves.db'); c.account:SetText('Alice'); c.name:SetText('NewName')
             c.preview.onClick()
-            launch.subScripts[1].callback('{"ok":true,"preview":true}', nil, 200)
-            c.name:SetText('SecondName'); c.create.onClick()
-            assert(#workers == 1 and not c.create.enabled())
-            assert(c.results.buf:find('Preview this build',1,true))
-            c.preview.onClick()
-            launch.subScripts[2].callback('{"ok":true,"preview":true}', nil, 200)
-            common.base64.encode = function() return 'changed-code' end
+            launch.subScripts[1].callback('{"ok":true,"preview":true,"previewKey":"checked"}')
             c.create.onClick()
-            assert(#workers == 2 and not c.create.enabled())
+            local payload=require('dkjson').decode(workers[2].args[3])
+            assert(payload.operation=='export' and payload.previewKey=='checked')
+            launch.subScripts[2].callback('{"ok":true,"character":"NewName","backup":"backup.db"}')
+            assert(not c.create.enabled() and c.results.buf:find('Character created: NewName',1,true))
         ''')
 
-    def test_server_errors_and_worker_failures_are_visible(self):
-        self.lua.run(r'''
-            local errors = {}
-            M.Request('http://localhost/api/pob/preview', 'x', {}, function(result, error) errors[#errors+1] = error end)
-            launch.subScripts[1].callback('{"ok":false,"error":"Unsupported ascendancy"}', nil, 422)
-            assert(errors[1] == 'Unsupported ascendancy')
-            M.Request('http://localhost/api/pob/preview', 'x', {}, function(result, error) errors[#errors+1] = error end)
-            launch.subScripts[2].callback(nil, 'Worker failed')
-            assert(errors[2] == 'Worker failed')
-            M.Request('http://localhost/api/pob/preview', 'x', {}, function(result, error) errors[#errors+1] = error end)
-            launch.subScripts[3].callback('<html>Wrong server</html>', nil, 200)
-            assert(errors[3]:find('did not return LocalExile JSON',1,true))
+    def test_legacy_tokens_and_server_urls_are_not_persisted(self):
+        self.lua.run('''
+            assert(M.SavePreferences(userPath..'LocalExile.json', {database='C:/saves.db',dataFolder='C:/data',account='Alice',league='Standard',token='secret',serverUrl='https://old'}))
+            local f=assert(io.open(userPath..'LocalExile.json')); local text=f:read('*a'); f:close()
+            assert(not text:find('secret',1,true) and not text:find('https://old',1,true))
+            assert(M.ReadPreferences(userPath..'LocalExile.json').database=='C:/saves.db')
         ''')
 
-    def test_close_discards_token(self):
-        self.lua.run(r'''
-            M.Open(tab); local c = main.popup.controls
-            c.token:SetText('synthetic-token'); c.close.onClick()
-            assert(c.token.buf == '' and main.popup == nil)
+    def test_compatibility_warnings_keep_valid_entries(self):
+        self.lua.run('''
+            local text=M.Describe({preview=true,compatibility={{source='gem',effect='Frostblink',status='partial',reason='Movement only',action='kept'}},compatibilityCount=1})
+            assert(text:find('[partial]',1,true) and text:find('valid entries are kept',1,true))
         ''')
 
-    def test_worker_uses_actual_pob_curl_and_refuses_redirects(self):
-        requests = []
+    def test_local_worker_errors_are_visible(self):
+        self.lua.run('''
+            local err
+            M.Request({operation='inspect',database='x'},function(reply,message) err=message end)
+            launch.subScripts[1].callback('{"ok":false,"error":"Database busy"}')
+            assert(err=='Database busy')
+        ''')
 
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_POST(self):
-                requests.append((self.path, self.headers.get("Authorization")))
-                self.rfile.read(int(self.headers.get("Content-Length", "0")))
-                if self.path == "/api/pob/characters":
-                    self.send_response(302)
-                    self.send_header("Location", "/leak-token")
-                    self.end_headers()
-                else:
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.end_headers()
-                    self.wfile.write(b'{"ok":true,"preview":true}')
+    def test_no_application_http_transport_remains(self):
+        for folder in (REPOSITORY / 'src/Modules', REPOSITORY / 'src/Classes'):
+            for path in folder.rglob('*.lua'):
+                self.assertNotIn('require("lcurl.safe")', path.read_text(encoding='utf-8-sig'), str(path))
 
-            def log_message(self, *args):
-                pass
-
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            url = f"http://127.0.0.1:{server.server_port}"
-            self.lua.run("testUrl = " + json.dumps(url))
-            self.lua.run(r'''
-                local worker = assert(loadstring(M.RequestScript))
-                local body, error, status = worker(testUrl .. '/api/pob/preview', 'synthetic-token', '{}')
-                assert(not error, tostring(error)); assert(status == 200 and body:find('true',1,true))
-                local body, error, status = worker(testUrl .. '/api/pob/characters', 'synthetic-token', '{}')
-                assert(body == nil and status == 302 and error:find('redirected',1,true))
-            ''')
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
-        self.assertEqual(requests, [("/api/pob/preview", "Bearer synthetic-token"), ("/api/pob/characters", "Bearer synthetic-token")])
+    def test_native_bridge_starts_bundled_exporter_without_a_shell(self):
+        self.lua.run('native = assert(loadfile(sourceRoot.."/Modules/LocalExileNative.lua"))()')
+        executable = REPOSITORY / 'runtime/LocalExile/evryBuild.Export.exe'
+        self.assertTrue(executable.is_file(), 'Build the local exporter before running these checks.')
+        self.lua.run('exe='+json.dumps(executable.as_posix()))
+        self.lua.run('''
+            local response,err=native.Run(exe, '{"operation":"inspect","database":"C:/does-not-exist.db"}',30000)
+            assert(response,tostring(err)); local reply=require('dkjson').decode(response)
+            assert(reply and reply.ok==false and reply.error:find('does not exist',1,true))
+        ''')
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--runtime-dir", type=Path, default=REPOSITORY / "runtime",
-                        help="Complete Windows PoB runtime folder (default: this checkout's runtime)")
-    args, remaining = parser.parse_known_args()
-    INSTALLATION = args.runtime_dir
-    unittest.main(argv=[__file__] + remaining)
+if __name__ == '__main__':
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--runtime-dir',type=Path,default=REPOSITORY/'runtime')
+    args,remaining=parser.parse_known_args(); INSTALLATION=args.runtime_dir
+    unittest.main(argv=[__file__]+remaining)

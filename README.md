@@ -1,39 +1,49 @@
 # evryBuild - POB for LocalExile
 
-evryBuild is an offline build planner with a dedicated connection to a configured LocalExile server.
-It retains local passive-tree, skill, item, gem and calculation tools and adds **Preview / Forge Character**
-in the **Import/Export Build** tab.
+evryBuild is an offline build planner with **Export to LocalExile** in **Import/Export Build**.
+Choose the local server's SQLite save database, preview the current build, and create a new character.
+No LocalExile API, token, listening port, plugin, or source changes are required.
+The exporter runs once locally, then exits; it is included in the portable package.
 
-The application's only HTTP transport is the LocalExile preview/character-creation API.
-Official account imports, OAuth, trade searches, public-build browsing, web uploads/downloads,
-URL shortening, online updates and external browser launches are unavailable.
-Saved build XML, pasted build codes, local tree-link decoding, clipboard items and build comparison continue to work offline.
-A compatible LocalExile server determines which planned features can be restored in game; see
-[setup and import compatibility](docs/LocalExile.md).
+Valid equipment, gems and passives are retained even when their gameplay mechanics are not implemented.
+Preview distinguishes native encoding omissions from implemented, partial, unimplemented and unknown effects.
+Offline compatibility rules belong to this repository; unknown effects are never assumed to work.
+See [setup, database safety and compatibility](docs/LocalExile.md).
+
+All application networking is disabled: official account imports, OAuth, trade, web build sharing,
+URL shortening, updates and browser launches are unavailable.
+Local XML, pasted build codes, tree-link decoding, clipboard items, comparison builds and planning remain available.
 
 ## Portable Windows application
 
-With Python 3.10 or newer, run from this source checkout:
+Extract the entire portable ZIP to a writable folder and run **evryBuild.exe** or **evryBuild.cmd**.
+The package includes the native runtime and a self-contained Windows x64 exporter.
+Running it needs no .NET installation, Python, Git or separate PoB installation.
+Builds and preferences remain in the extracted folder. The package contains no personal builds or credentials.
+
+For developers packaging this source checkout, install the .NET 10 SDK, PowerShell and Python 3.10+, then run:
 
 ```powershell
-python scripts/package-evrybuild.py --destination '..\evryBuild-app'
+.\scripts\build-exporter.ps1
+python scripts/package-evrybuild.py --destination '..\evryBuild-external-app'
 ```
 
-Choose a new destination folder. The package contains the current source, assets, licenses and existing Windows x64 runtime.
-It does not copy personal builds, settings or credentials and does not require another PoB installation.
-Extract the complete portable package to a writable folder and run **evryBuild.exe** (or **evryBuild.cmd**).
-Builds and settings stay inside that folder. Updates are installed by extracting a new evryBuild package.
+Choose a new destination. Packaging checks the exporter executable and source hashes against its build receipt,
+so stale helper builds cannot be included accidentally. Compiled output is ignored by Git.
+The previously published API-based portable is an older design; it does not contain this external exporter.
 
 ## Development checks
 
 ```powershell
+.\scripts\build-exporter.ps1
+dotnet test tests/LocalExile.Export.Tests
 python tests/evrybuild/test_localexile.py -v
+python tests/evrybuild/test_exporter.py -v
 python -m unittest discover -s scripts -p test_package_evrybuild.py -v
 ```
 
-The Lua tests use the bundled runtime and exercise LocalExile requests, offline import/export controls,
-blocked external requests, legacy-account credential handling and application module compilation.
-The packaging tests cover runtime completeness, profile isolation and destination guards.
+[Validation instructions](tests/evrybuild/README.md) include optional real-data testing.
+Tests write only temporary databases. Unmodified upstream contract validation is separate from the game-client check.
 
 ## Attribution and license
 

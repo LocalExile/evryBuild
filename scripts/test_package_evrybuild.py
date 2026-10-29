@@ -1,4 +1,5 @@
 """Focused release-packaging checks; no real game files or other installations are used."""
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -35,6 +36,22 @@ class PackageTests(unittest.TestCase):
             location.write_bytes(("current fork file: " + name).encode())
         (self.source / "src/Modules/LocalExile.lua").write_text("current fork integration", encoding="utf-8")
         (self.source / "runtime/msvcr100.dll").write_bytes(b"compatibility runtime")
+        (self.source / "src/Modules/LocalExileNative.lua").write_text("local process bridge")
+        exporter = self.source / "runtime/LocalExile/evryBuild.Export.exe"
+        exporter.parent.mkdir(parents=True)
+        exporter.write_bytes(b"synthetic exporter runtime")
+        (exporter.parent / "exporter-build.json").write_text(json.dumps({"sha256":hashlib.sha256(exporter.read_bytes()).hexdigest()}))
+        notice = self.source / "tools/LocalExile.Export/NOTICE.md"
+        notice.parent.mkdir(parents=True)
+        notice.write_text("Exporter attribution")
+        notices = notice.parent / 'notices'
+        notices.mkdir()
+        for name in ('DOTNET-LICENSE.txt', 'DOTNET-THIRD-PARTY-NOTICES.txt', 'SQLITEPCLRAW-LICENSE.txt'):
+            (notices / name).write_text('Third-party license text')
+        receipt = exporter.parent / "exporter-build.json"
+        receipt.write_text(json.dumps({"sha256":hashlib.sha256(exporter.read_bytes()).hexdigest(),
+                                      "sources":{p.relative_to(notice.parent).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                                                 for p in notice.parent.rglob('*') if p.is_file()}}))
         for name in ("Settings.xml", "LocalExile.json", "imgui.ini", "first.run", "installed.cfg", "Builds/Personal.xml", "Update/private.tmp"):
             path = self.source / "src" / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +167,18 @@ class PackageTests(unittest.TestCase):
         self.write_manifest()
         with self.assertRaisesRegex(package_module.PackageError, "overwrite"):
             self.package()
+
+    def test_stale_exporter_and_changed_source_are_refused(self):
+        exporter = self.source / 'runtime/LocalExile/evryBuild.Export.exe'
+        original = exporter.read_bytes()
+        exporter.write_bytes(b'changed executable')
+        with self.assertRaisesRegex(package_module.PackageError, 'build receipt'):
+            self.package()
+        exporter.write_bytes(original)
+        (self.source / 'tools/LocalExile.Export/NOTICE.md').write_text('changed source input')
+        with self.assertRaisesRegex(package_module.PackageError, 'source changed'):
+            self.package()
+        self.assertFalse(self.target.exists())
 
 
 if __name__ == "__main__":

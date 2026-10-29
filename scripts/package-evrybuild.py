@@ -31,7 +31,8 @@ APPLICATION_DIRECTORIES = {"Assets", "Classes", "Data", "Modules", "TreeData"}
 APPLICATION_FILES = {"Launch.lua", "LaunchServer.lua", "GameVersions.lua", "UpdateApply.lua", "UpdateCheck.lua"}
 REQUIRED_OUTPUTS = {EXE, "Launch.lua", "GameVersions.lua", "Modules/Main.lua", "Classes/ImportTab.lua",
                     "Modules/LocalExile.lua", "LICENSE.md", "help.txt", "changelog.txt", "lua51.dll",
-                    "SimpleGraphic.dll", "lcurl.dll", "libcurl.dll", "zlib1.dll", "lua/dkjson.lua", "lua/base64.lua"}
+                    "SimpleGraphic.dll", "lcurl.dll", "libcurl.dll", "zlib1.dll", "lua/dkjson.lua", "lua/base64.lua",
+                    "Modules/LocalExileNative.lua", "LocalExile/evryBuild.Export.exe"}
 
 
 class PackageError(Exception):
@@ -108,9 +109,30 @@ def application_files(source: Path) -> tuple[str, dict[Path, Path]]:
         add(input_path, output)
 
     # Fork-owned files are intentionally not generated into upstream's update manifest.
-    module = Path("Modules/LocalExile.lua")
-    if module.as_posix().casefold() not in names:
-        add(Path("src") / module, module)
+    for module in (Path("Modules/LocalExile.lua"), Path("Modules/LocalExileNative.lua")):
+        if module.as_posix().casefold() not in names:
+            add(Path("src") / module, module)
+    exporter = Path("runtime/LocalExile/evryBuild.Export.exe")
+    if not (source / exporter).is_file():
+        raise PackageError("Build the bundled local exporter first: .\\scripts\\build-exporter.ps1")
+    receipt = checked_file(source, Path("runtime/LocalExile/exporter-build.json"))
+    try:
+        exporter_receipt = json.loads(receipt.read_text(encoding="utf-8-sig"))
+        digest = exporter_receipt["sha256"]
+    except (KeyError, ValueError) as error:
+        raise PackageError("The exporter build receipt is invalid; rebuild the exporter.") from error
+    if hashlib.sha256(checked_file(source, exporter).read_bytes()).hexdigest() != digest:
+        raise PackageError("The exporter differs from its build receipt; rebuild the exporter.")
+    source_folder = source / "tools/LocalExile.Export"
+    expected_sources = {p.relative_to(source_folder).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in source_folder.rglob("*") if p.is_file() and p.suffix in (".cs", ".csproj", ".json", ".md", ".txt")
+                        and not any(part in ("bin", "obj") for part in p.relative_to(source_folder).parts)}
+    if exporter_receipt.get("sources") != expected_sources:
+        raise PackageError("The exporter source changed since its build; run scripts/build-exporter.ps1 again.")
+    add(exporter, Path("LocalExile/evryBuild.Export.exe"))
+    add(Path("tools/LocalExile.Export/NOTICE.md"), Path("LocalExile/NOTICE.md"))
+    for notice in ("DOTNET-LICENSE.txt", "DOTNET-THIRD-PARTY-NOTICES.txt", "SQLITEPCLRAW-LICENSE.txt"):
+        add(Path("tools/LocalExile.Export/notices") / notice, Path("LocalExile/notices") / notice)
     compatibility = Path("runtime/msvcr100.dll")
     if (source / compatibility).is_file() and "msvcr100.dll" not in names:
         add(compatibility, Path("msvcr100.dll"))

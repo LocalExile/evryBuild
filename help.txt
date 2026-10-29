@@ -1,7 +1,7 @@
 ---[Help File Introduction]
 
 This file contains shortcuts and local planning help for evryBuild - POB for LocalExile.
-The only online feature is the configured LocalExile Preview / Forge Character API.
+Export to LocalExile writes a selected local SQLite database. No API or token is required.
 Official account imports, trade, web sharing, update checks and external browser links are unavailable.
 Use saved XML files, pasted build codes and clipboard items for offline planning.
 While holding shift scroll bars in the help section and version history will jump to the previous/next section while scrolling

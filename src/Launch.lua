@@ -261,7 +261,7 @@ end
 ---@param callback fun(response:table, errMsg:string) @ response = { header, body }
 ---@param params? table @ params = { header, body }
 function launch:DownloadPage(url, callback, params)
-	if callback then callback(nil, "External downloads are not available in evryBuild. Use a local build code or LocalExile.") end
+	if callback then callback(nil, "External downloads are not available in evryBuild. Use a local build code or the local database exporter.") end
 end
 
 function launch:ApplyUpdate() end

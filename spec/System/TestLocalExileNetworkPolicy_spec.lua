@@ -1,4 +1,4 @@
-describe("evryBuild LocalExile-only network policy", function()
+describe("evryBuild offline network policy", function()
 	local originalLaunchSubScript, originalDownloadPage
 	before_each(function()
 		originalLaunchSubScript = _G.LaunchSubScript
