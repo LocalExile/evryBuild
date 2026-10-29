@@ -33,7 +33,7 @@ REQUIRED_OUTPUTS = {EXE, "Launch.lua", "GameVersions.lua", "Modules/Main.lua", "
                     "Modules/LocalExile.lua", "LICENSE.md", "help.txt", "changelog.txt", "lua51.dll",
                     "SimpleGraphic.dll", "lcurl.dll", "libcurl.dll", "zlib1.dll", "lua/dkjson.lua", "lua/base64.lua",
                     "Modules/LocalExileNative.lua", "LocalExile/evryBuild.Export.exe", "README.md", "docs/LocalExile.md",
-                    "docs/images/localexile-export.png"}
+                    "docs/images/localexile-export.png", "docs/images/localexile-export-dialog.png"}
 
 
 class PackageError(Exception):
@@ -113,7 +113,8 @@ def application_files(source: Path) -> tuple[str, dict[Path, Path]]:
     for module in (Path("Modules/LocalExile.lua"), Path("Modules/LocalExileNative.lua")):
         if module.as_posix().casefold() not in names:
             add(Path("src") / module, module)
-    for document in (Path("README.md"), Path("docs/LocalExile.md"), Path("docs/images/localexile-export.png")):
+    for document in (Path("README.md"), Path("docs/LocalExile.md"), Path("docs/images/localexile-export.png"),
+                     Path("docs/images/localexile-export-dialog.png")):
         add(document, document)
     exporter = Path("runtime/LocalExile/evryBuild.Export.exe")
     if not (source / exporter).is_file():

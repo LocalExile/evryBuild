@@ -14,9 +14,11 @@ Preview distinguishes native encoding omissions from implemented, partial, unimp
 Offline compatibility rules belong to this repository; unknown effects are never assumed to work.
 See [setup, database safety and compatibility](docs/LocalExile.md).
 
-![evryBuild's Export to LocalExile dialog showing database selection, account, character name, league and preview controls](docs/images/localexile-export.png)
+![evryBuild's Export to LocalExile dialog showing database selection, account, character name, league and preview controls](docs/images/localexile-export-dialog.png)
 
 *Export to LocalExile: select your server's save database, preview the active build, and create a new character.*
+
+[View the full application screenshot](docs/images/localexile-export.png).
 
 All application networking is disabled: official account imports, OAuth, trade, web build sharing,
 URL shortening, updates and browser launches are unavailable.
