@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 jobs:
   push-beta:
+    # This inherited workflow maintains upstream PoB's dev/beta release branches.
+    # evryBuild packages its external LocalExile edition separately.
+    if: github.repository == 'PathOfBuildingCommunity/PathOfBuilding'
     runs-on: ubuntu-22.04
     steps:
             - name: Set line endings
