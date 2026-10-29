@@ -40,6 +40,8 @@ class PackageTests(unittest.TestCase):
         (self.source / "README.md").write_text("Portable application quick start", encoding="utf-8")
         (self.source / "docs").mkdir()
         (self.source / "docs/LocalExile.md").write_text("Database export setup instructions", encoding="utf-8")
+        (self.source / "docs/images").mkdir()
+        (self.source / "docs/images/localexile-export.png").write_bytes(b"README screenshot fixture")
         exporter = self.source / "runtime/LocalExile/evryBuild.Export.exe"
         exporter.parent.mkdir(parents=True)
         exporter.write_bytes(b"synthetic exporter runtime")
@@ -118,8 +120,11 @@ class PackageTests(unittest.TestCase):
         self.package()
         self.assertEqual(expected, (self.target / 'docs/LocalExile.md').read_bytes())
         self.assertEqual((self.source / 'README.md').read_bytes(), (self.target / 'README.md').read_bytes())
+        screenshot = 'docs/images/localexile-export.png'
+        self.assertEqual((self.source / screenshot).read_bytes(), (self.target / screenshot).read_bytes())
         record = json.loads((self.target / 'evryBuild-package.json').read_text())
         self.assertEqual(hashlib.sha256(expected).hexdigest(), record['filesSha256']['docs/LocalExile.md'])
+        self.assertEqual(hashlib.sha256((self.source / screenshot).read_bytes()).hexdigest(), record['filesSha256'][screenshot])
 
     def test_an_existing_application_or_profile_is_never_overwritten(self):
         self.target.mkdir()
