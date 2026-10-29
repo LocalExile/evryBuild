@@ -6,7 +6,8 @@ The earlier API-based ZIP is a different implementation; do not label it as the 
 
 ## Build requirements
 
-Use Windows x64 with the .NET 10 SDK, PowerShell, Python 3.10+ and this evryBuild source checkout.
+Use Windows x64 with the .NET 10 SDK, PowerShell, Python 3.10+ and the
+[LocalExile/evryBuild source checkout](https://github.com/LocalExile/evryBuild).
 The checked-in planner runtime is reused; a separate PoB installation or LocalExile checkout is not needed to package it.
 The exporter is self-contained, so users of the resulting ZIP do not need .NET or Python installed.
 

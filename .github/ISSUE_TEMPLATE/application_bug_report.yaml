@@ -1,31 +1,31 @@
 name: Application bug report
-description: Create a bug report to help us fix an issue in Path of Building for PoE1.
+description: Create a bug report to help us fix an issue in evryBuild - POB for LocalExile.
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting an issue with PoB-**PoE1**.
-        [Issues with PoB-PoE2 go here.](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/issues).
+        Thank you for reporting an issue with evryBuild - POB for LocalExile.
+        [Export setup and known limitations](https://github.com/LocalExile/evryBuild/blob/master/docs/LocalExile.md).
         Please try to fill in as much of the form below as you're able to. Fields marked with an asterisk (*) are required.
   - type: checkboxes
     id: version
     attributes:
       label: Check version
       options:
-        - label: I'm running the latest version of Path of Building and I've verified this by checking the [changelog](https://github.com/PathOfBuildingCommunity/PathOfBuilding/blob/master/CHANGELOG.md)
+        - label: I've checked the [latest evryBuild release and its notes](https://github.com/LocalExile/evryBuild/releases/latest)
           required: true
   - type: checkboxes
     id: duplicates
     attributes:
       label: Check for duplicates
       options:
-        - label: I've checked for duplicate open **and closed** issues by using the search function of the [issue tracker](https://github.com/PathOfBuildingCommunity/PathOfBuilding/issues?q=is%3Aissue)
+        - label: I've checked for duplicate open **and closed** issues by using the search function of the [issue tracker](https://github.com/LocalExile/evryBuild/issues?q=is%3Aissue)
           required: true
   - type: dropdown
     id: platform
     attributes:
-      label: What platform are you running Path of Building on?
+      label: What platform are you running evryBuild on?
       options: 
         - Windows
         - Linux - Wine
@@ -37,7 +37,7 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: How is Path of Building expected to behave?
+      label: How is evryBuild expected to behave?
       description: Please write a clear and concise description of what should happen.
       placeholder: E.g. When I resize PoB all [...] should be accessible.
     validations:
@@ -45,7 +45,7 @@ body:
   - type: textarea
     id: actual
     attributes:
-      label: How does Path of Building behave?
+      label: How does evryBuild behave?
       description: Please write a clear and concise description of what actually happens.
       placeholder: E.g. When I resize PoB some [...] become inaccessible. 
     validations:
@@ -66,9 +66,9 @@ body:
   - type: textarea
     id: build_code
     attributes:
-      label: PoB for PoE1 build code
+      label: PoB build code
       description: Always provide a build code that exhibits the bug you want to report, even if it is not specific to a particular build. This helps us greatly to reproduce bugs faster.
-      placeholder: This can be either a code copied from the "Import/Export Build" tab or a link to a PoB build.
+      placeholder: This can be either a code copied from the "Import/Export Build" tab or an attached saved XML file.
       render: shell
     validations:
       required: false

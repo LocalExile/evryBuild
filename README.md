@@ -1,5 +1,9 @@
 # evryBuild - POB for LocalExile
 
+[Repository](https://github.com/LocalExile/evryBuild) ·
+[Portable download and release notes](https://github.com/LocalExile/evryBuild/releases/latest) ·
+[Report an issue or suggest a feature](https://github.com/LocalExile/evryBuild/issues)
+
 evryBuild is an offline build planner with **Export to LocalExile** in **Import/Export Build**.
 Choose the local server's SQLite save database, preview the current build, and create a new character.
 No LocalExile API, token, listening port, plugin, or source changes are required.

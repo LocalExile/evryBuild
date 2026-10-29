@@ -1,24 +1,24 @@
 name: Feature request
-description: Suggest an idea for Path of Building for PoE1.
+description: Suggest an idea for evryBuild - POB for LocalExile.
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for suggesting a feature for PoB-**PoE1**.
-        [Feature requests for PoB-PoE2 go here.](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2/issues).
+        Thank you for suggesting a feature for evryBuild - POB for LocalExile.
+        [Export setup and known limitations](https://github.com/LocalExile/evryBuild/blob/master/docs/LocalExile.md).
         Please try to fill in as much of the form below as you're able to. Fields marked with an asterisk (*) are required.
   - type: checkboxes
     id: duplicates
     attributes:
       label: Check for duplicates
       options:
-        - label: I've checked for duplicate open **and closed** issues by using the search function of the [issue tracker](https://github.com/PathOfBuildingCommunity/PathOfBuilding/issues?q=is%3Aissue)
+        - label: I've checked for duplicate open **and closed** issues by using the search function of the [issue tracker](https://github.com/LocalExile/evryBuild/issues?q=is%3Aissue)
           required: true
   - type: dropdown
     id: platform
     attributes:
-      label: What platform are you running Path of Building on?
+      label: What platform are you running evryBuild on?
       options: 
         - Windows
         - Linux - Wine

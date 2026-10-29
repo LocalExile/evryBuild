@@ -7,6 +7,7 @@ The exporter does not modify the game archive or install server code.
 
 ## Run the portable application
 
+Download the Windows portable ZIP from [LocalExile/evryBuild releases](https://github.com/LocalExile/evryBuild/releases/latest).
 Extract the complete ZIP to a writable folder, open the extracted folder containing `evryBuild.exe`, and run it.
 The included `evryBuild.cmd` is an alternative launcher. Do not run from inside the ZIP.
 The exporter is a self-contained Windows x64 executable included under `LocalExile/`.
@@ -70,6 +71,9 @@ If an export loses its response, refresh the character list before trying again.
 The new name is refused on retry if the transaction already committed.
 
 ## Troubleshooting
+
+Report reproducible problems or feature suggestions in the [evryBuild issue tracker](https://github.com/LocalExile/evryBuild/issues).
+Include the release/version, reproduction steps and relevant export warnings, with private account/save data removed.
 
 | What you see | What to do |
 |---|---|

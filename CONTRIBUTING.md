@@ -1,5 +1,9 @@
 # Contributing to evryBuild - POB for LocalExile
 
+The project repository is [LocalExile/evryBuild](https://github.com/LocalExile/evryBuild).
+Report bugs and feature suggestions in [its issue tracker](https://github.com/LocalExile/evryBuild/issues),
+and submit pull requests against `master`.
+
 For this fork's external SQLite integration, start with [setup and compatibility](docs/LocalExile.md),
 [validation](tests/evrybuild/README.md) and [local packaging](RELEASE.md).
 The integration lives in `src/Modules/LocalExile.lua`, `src/Modules/LocalExileNative.lua` and
@@ -8,11 +12,11 @@ Keep loadable items/gems/passives even when gameplay support is missing, and rep
 Compatibility rules belong to `tools/LocalExile.Export/compatibility.json`: mark unverified mechanics **unknown**,
 and attach evidence to new implemented/partial/unimplemented rules.
 
-The guide below is retained from upstream for planner development. Its upstream repository, branch, online sharing
-and update instructions describe Path of Building's workflow; evryBuild disables those application network features.
+The planner development notes below are adapted from upstream. evryBuild disables application networking;
+use local XML files and pasted build codes when reproducing issues.
 For an evryBuild bug report, provide reproduction steps and a saved XML or pasted build code with private details removed.
 
-# Upstream planner development reference
+# Planner development reference
 
 # Table of contents
 1. [Reporting bugs](#reporting-bugs)
@@ -28,15 +32,15 @@ For an evryBuild bug report, provide reproduction steps and a saved XML or paste
 ## Reporting bugs
 
 ### Before creating an issue:
-* Check that the bug hasn't been reported in an existing issue. View similar issues to the left of the submit button.
-* Make sure you are running the latest version of the program. Click "Check for Update" in the bottom left corner.
+* Check the [evryBuild issue tracker](https://github.com/LocalExile/evryBuild/issues?q=is%3Aissue) for an existing report.
+* Check the [latest portable release](https://github.com/LocalExile/evryBuild/releases/latest) and include the version you tested. Automatic update checks are disabled.
 * If you've found an issue with offence or defence calculations, make sure you check the breakdown for that calculation in the Calcs tab to see how it is being performed, as this may help you find the cause.
 
 ### When creating an issue:
 * Select the "Bug Report" issue template and fill out all fields.
 * Please provide detailed instructions on how to reproduce the bug, if possible.
-* Provide a build share code for a build that is affected by the bug, if possible.
-  In the "Import/Export Build" tab, click "Generate", then "Share" and add the link to your post. 
+* Provide a saved XML file or pasted build code for a build that is affected by the bug, if possible.
+  In the "Import/Export Build" tab, click "Generate" and copy the code into your report. Online sharing is disabled.
 
 Build share codes allow us to reproduce bugs much more quickly. 
 
@@ -44,8 +48,8 @@ Build share codes allow us to reproduce bugs much more quickly.
 Feature requests are always welcome. Note that not all requests will receive an immediate response.
 
 ### Before submitting a feature request:
-* Check that the feature hasn't already been requested. Look at all issues with titles that might be related to the feature.
-* Make sure you are running the latest version of the program, as the feature may already have been added. Click "Check for Update" in the bottom left corner.
+* Check the [evryBuild issue tracker](https://github.com/LocalExile/evryBuild/issues?q=is%3Aissue) for related requests.
+* Read the [latest release notes](https://github.com/LocalExile/evryBuild/releases/latest), as the feature may already have been added.
 
 ### When submitting a feature request:
 * Select the "Feature Request" issue template and fill out all fields.
@@ -56,11 +60,10 @@ Feature requests are always welcome. Note that not all requests will receive an 
 
 ### Before submitting a pull request:
 * Familiarise yourself with the code base [here](docs/rundown.md) to get you started.
-* There is a [Discord](https://discordapp.com/) server for **active development** on the fork and members are happy to answer your questions there.
-  If you are interested in joining, send a private message to **localidentity** or **wires77** and we'll send you an invitation.
+* Use [evryBuild issues](https://github.com/LocalExile/evryBuild/issues) to discuss changes with the LocalExile maintainers.
 
 ### When submitting a pull request:
-* **Pull requests must be created against the `dev` branch**, as all changes to the code are staged there before merging to `master`.
+* **Create pull requests against `master` in [LocalExile/evryBuild](https://github.com/LocalExile/evryBuild).**
 * Make sure that the changes have been thoroughly tested!
 * If you're updating mod parsing logic, make sure to reload PoB with `Ctrl` + `F5` to regenerate `./src/Data/ModCache.lua`. This is a very large, automatically generated file that can be used to verify your changes didn't affect any other mods inadvertently. Make sure to commit `./src/Data/ModCache.lua` if your changes cause it to differ.
 * There are many more files in the `./src/Data` directory that are automatically generated. This is indicated by the header 
@@ -74,14 +77,20 @@ The easiest way to make and test changes is by setting up a development installa
 
 1. Clone the repository using this command:
 
-       git clone -b dev https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
+       git clone https://github.com/LocalExile/evryBuild.git
 
-2. Go to the actual folder on your computer where you cloned Path of Building. (e.g. C:/XX/GitHub/PathOfBuilding/runtime/)
+2. Go to the folder where you cloned evryBuild (for example, `C:/src/evryBuild`).
 
-       cd PathOfBuilding
+       cd evryBuild
 
-3. Start Path of Building from the repository by running `./runtime/Path{space}of{space}Building.exe`.
-   * <ins>Note for Linux users:</ins> The executable files should automatically have the correct permissions when cloned fresh. If you still encounter permission issues, run once: `chmod +x ./runtime/Path{space}of{space}Building-PoE2.exe`
+3. Build the bundled exporter and launch the planner in PowerShell:
+
+   ```powershell
+   .\scripts\build-exporter.ps1
+   & '.\runtime\Path{space}of{space}Building.exe'
+   ```
+
+   See [RELEASE.md](RELEASE.md) for the Windows build requirements and portable packaging instructions.
 You can now use the shortcut to run the program from the repository. Running the program in this manner automatically enables "Dev Mode", which has some handy debugging feature:
 * `F5` restarts the program in-place (this is what usually happens when an update is applied).
 * `Ctrl` + `~` toggles the console (Note that this does not work with all keyboard layouts. US layout is a safe bet though).
@@ -96,47 +105,26 @@ You can now use the shortcut to run the program from the repository. Running the
 
 Note that automatic updates are disabled in Dev Mode.
 
-### Forcing Dev Mode OFF when using dev branch
+### Offline update policy
 
-Sometimes you may need to force Dev mode OFF when running from the dev branch to debug a specific part of Path of Building (e.g. the update system).
-
-To do so [comment out Line 54 to line 58](./src/Launch.lua#L54-L58) of the [Launch.lua](./src/Launch.lua) file:
-```
-	--if localManXML and not self.versionBranch and not self.versionPlatform then
-	--    -- Looks like a remote manifest, so we're probably running from a repository
-	--    -- Enable dev mode to disable updates and set user path to be the script path
-	--    self.devMode = true
-	--end
-```
-
-and create a valid manifest.xml file in the ./src directory. Then run the `./runtime/Path{space}of{space}Building.exe` as usual. You should get the typical update popup in the bottom left corner.
-
-The manifest.xml file deserves its own in depth document, but usually copying from release and editing accordingly works well enough.
+Automatic updates and online installers are disabled in every evryBuild mode.
+Use the [current portable release](https://github.com/LocalExile/evryBuild/releases/latest) to update an installed copy.
+Changing development-mode flags does not enable network access.
 
 ## Keeping your fork up to date
 
-Note: This tutorial assumes that you are already familiar with Git and basic command line tools.
+The evryBuild origin is `https://github.com/LocalExile/evryBuild.git`, and its default branch is `master`.
+For a clean checkout with no local changes, run these commands in PowerShell from the repository root:
 
-Note: If you've configured a remote already, you can skip ahead to step 3.
+```powershell
+git switch master
+git pull --ff-only origin master
+```
 
-1. Add a new remote repository and name it `upstream`.
-
-       git remote add upstream https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
-2. Verify that adding the remote worked.
-
-       git remote -v
-3. Fetch all branches and their commits from upstream.
-
-       git fetch upstream
-4. Check out your local `dev` branch if you haven't already.
-
-       git checkout dev
-5. Merge all changes from `upstream/dev` into your local `dev` branch.
-
-       git rebase upstream/dev
-6. Push your updated branch to GitHub.
-
-       git push -f origin dev
+If Git reports local changes or divergent history, preserve that work and review it before merging.
+Planner upstream remains [PathOfBuildingCommunity/PathOfBuilding](https://github.com/PathOfBuildingCommunity/PathOfBuilding).
+Port upstream planner changes on a separate branch and run the evryBuild validation checks before merging;
+retain the external SQLite exporter and offline application policy.
 
 ## Setting up a development environment
 
