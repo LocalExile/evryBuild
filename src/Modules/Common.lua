@@ -22,7 +22,6 @@ local b_xor = bit.bxor
 common = { }
 
 -- External libraries
-common.curl = require("lcurl.safe")
 common.xml = require("xml")
 common.base64 = require("base64")
 common.sha1 = require("sha1")

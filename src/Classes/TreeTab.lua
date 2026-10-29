@@ -756,37 +756,8 @@ function TreeTabClass:OpenImportPopup()
 		if #treeLink == 0 then
 			return
 		end
-		-- EG: http://poeurl.com/dABz
 		if treeLink:match("poeurl%.com/") then
-			controls.import.enabled = false
-			controls.msg.label = "Resolving PoEURL link..."
-			local id = LaunchSubScript([[
-				local treeLink = ...
-				local curl = require("lcurl.safe")
-				local easy = curl.easy()
-				easy:setopt_url(treeLink)
-				easy:setopt_writefunction(function(data)
-					return true
-				end)
-				easy:perform()
-				local redirect = easy:getinfo(curl.INFO_REDIRECT_URL)
-				easy:close()
-				if not redirect or redirect:match("poeurl%.com/") then
-					return nil, "Failed to resolve PoEURL link"
-				end
-				return redirect
-			]], "", "", treeLink)
-			if id then
-				launch:RegisterSubScript(id, function(treeLink, errMsg)
-					if errMsg then
-						controls.msg.label = "^1"..errMsg.."^7"
-						controls.import.enabled = true
-						return
-					else
-						decodeTreeLink(treeLink, validateTreeVersion(treeLink:match("tree/(%l+%-?%l*)"), treeLink:match(versionLookup)))
-					end
-				end)
-			end
+			controls.msg.label = "^1Short links are not downloaded. Paste a complete tree code or link.^7"
 		elseif treeLink:match("poeplanner.com/") then
 			decodePoePlannerTreeLink(treeLink:gsub("/%?v=.+#","/"))
 		elseif treeLink:match("poeskilltree.com/") then
@@ -815,20 +786,6 @@ function TreeTabClass:OpenExportPopup()
 	local controls = { }
 	controls.label = new("LabelControl", nil, {0, 20, 0, 16}, "Passive tree link:")
 	controls.edit = new("EditControl", nil, {0, 40, 350, 18}, treeLink, nil, "%Z")
-	controls.shrink = new("ButtonControl", nil, {-90, 70, 140, 20}, "Shrink with PoEURL", function()
-		controls.shrink.enabled = false
-		controls.shrink.label = "Shrinking..."
-		launch:DownloadPage("http://poeurl.com/shrink.php?url="..treeLink, function(response, errMsg)
-			controls.shrink.label = "Done"
-			if errMsg or not response.body:match("%S") then
-				main:OpenMessagePopup("PoEURL Shortener", "Failed to get PoEURL link. Try again later.")
-			else
-				treeLink = "http://poeurl.com/"..response.body
-				controls.edit:SetText(treeLink)
-				popup:SelectControl(controls.edit)
-			end
-		end)
-	end)
 	controls.copy = new("ButtonControl", nil, {30, 70, 80, 20}, "Copy", function()
 		Copy(treeLink)
 	end)
@@ -2193,227 +2150,7 @@ function TreeTabClass:FindTimelessJewel()
 
 	controls.searchResults = new("TimelessJewelListControl", { "BOTTOMLEFT", nil, "BOTTOMLEFT" },
 		{ edgePadding*2 + listWidth, -(buttonHeight + edgePadding * 2), listWidth, listHeight }, self.build)
-	self.tradeQueryRequests = new("TradeQueryRequests")
 	controls.msg = new("LabelControl", nil, { -280, 5, 0, 20 }, "")
-	controls.searchTradeButton = new("ButtonControl", { "BOTTOMRIGHT", controls.searchResults, "TOPRIGHT" }, { 0, -rowSpacing, 170, buttonHeight }, "Open Trade URL", function()
-		local seedTrades = {}
-		local startRow, endRow
-		if controls.searchResults.highlightIndex and not controls.searchMore.state then
-			startRow = m_min(controls.searchResults.selIndex, controls.searchResults.highlightIndex)
-			endRow = m_max(controls.searchResults.selIndex, controls.searchResults.highlightIndex)
-		else
-			startRow = controls.searchResults.selIndex or 1
-			local maxFilters = controls.searchMore.state and 180 or 10
-			endRow = startRow + m_floor(maxFilters / ((timelessData.sharedResults.conqueror.id == 1) and 3 or 1))
-		end
-		
-
-		local seedCount = m_min(#timelessData.searchResults - startRow, endRow - startRow) + 1
-		-- update if not highlighted already
-
-		local prevSearch = controls.searchTradeButton.lastSearch
-		if prevSearch and prevSearch[1] == startRow and prevSearch[2] == seedCount then
-			startRow = endRow + 1
-			if (startRow > #timelessData.searchResults) then
-				return
-			end
-			seedCount = m_min(#timelessData.searchResults - startRow + 1, seedCount)
-			endRow = startRow + seedCount - 1
-		end
-		controls.searchResults.selIndex = startRow
-		-- scroll so that startRow is the first visible row
-		controls.searchResults:ScrollToIndex(startRow)
-		controls.searchResults.highlightIndex = endRow
-
-		controls.searchTradeButton.lastSearch = {startRow, seedCount}
-
-		for i = startRow, startRow + seedCount - 1 do
-			local result = timelessData.searchResults[i]
-
-			local conquerorKeystoneTradeIds = data.timelessJewelTradeIDs[timelessData.jewelType.id].keystone
-			local conquerorTradeIds
-			if timelessData.jewelType.id >= 7 then
-				conquerorTradeIds = { conquerorKeystoneTradeIds[1] }
-			elseif timelessData.sharedResults.conqueror.id > 1 then
-				conquerorTradeIds = { conquerorKeystoneTradeIds[timelessData.sharedResults.conqueror.id - 1] }
-			else
-				conquerorTradeIds = { conquerorKeystoneTradeIds[1], conquerorKeystoneTradeIds[2], conquerorKeystoneTradeIds[3] }
-			end
-
-			for _, tradeId in ipairs(conquerorTradeIds) do
-				t_insert(seedTrades, {
-					id = tradeId,
-					value = {
-						min = result.seed,
-						max = result.seed
-					}
-				})
-			end
-		end
-
-		local tradeTypes = {
-			"securable",
-			"available",
-			"onlineleague",
-			"online",
-			"any"
-		}
-		local search = {
-			query = {
-				status = {
-					option = tradeTypes[self.tradeTypeIndex]
-				},
-				stats = {
-					{
-						filters = seedTrades,
-						type = "count",
-						value = {
-							min = 1
-						}
-					}
-				}
-			},
-			sort = {
-				price = "asc"
-			}
-		}
-
-		if data.timelessJewelTradeIDs[timelessData.jewelType.id].devotion ~= nil then
-			local devotionFilters = {}
-			if timelessData.sharedResults.devotionVariant1.id > 1 then
-				t_insert(devotionFilters, { id = data.timelessJewelTradeIDs[timelessData.jewelType.id].devotion[timelessData.sharedResults.devotionVariant1.id - 1] })
-			end
-			if timelessData.sharedResults.devotionVariant2.id > 1 then
-				t_insert(devotionFilters, { id = data.timelessJewelTradeIDs[timelessData.jewelType.id].devotion[timelessData.sharedResults.devotionVariant2.id - 1] })
-			end
-			if next(devotionFilters) then
-				t_insert(search.query.stats, {
-					filters = devotionFilters,
-					type = "and"
-				})
-			end
-		end
-
-		-- if the league was not selected via dropdown, then default to the first league in the dropdown or "" if the leagues could not be read
-		local selectedRealm = controls.realmSelection:GetSelValue():lower()
-
-		local realmPath = selectedRealm == "pc" and "" or (selectedRealm .. "/")
-		local url = "https://www.pathofexile.com/trade/search/" .. realmPath ..
-			(controls.searchTradeLeagueSelect:GetSelValue()) ..
-			"/?q=" .. (s_gsub(dkjson.encode(search), "[^a-zA-Z0-9]", function(a)
-				return s_format("%%%02X", s_byte(a))
-			end))
-		OpenURL(url)
-		Copy(url)
-
-		controls.searchTradeButton.label = "Open Next Trade URL"
-	end)
-	controls.searchTradeButton.enabled = timelessData.searchResults and #timelessData.searchResults > 0
-	controls.searchTradeButton.tooltipFunc = function(tooltip, mode, index, value)
-		tooltip:Clear()
-		tooltip:AddLine(16, "^7Click to generate and open a trade URL for searching for jewels in this list.")
-		tooltip:AddLine(16, "^7Paste the URL in a web browser to search.")
-		tooltip:AddLine(16, "")
-		tooltip:AddLine(16, "^7You can click to select a row so that search begins from there.")
-		tooltip:AddLine(16, "^7After selecting a row You can also shift+click on another row to select a range of rows to search.")
-	end
-
-	controls.searchTradeLeagueSelect = new("DropDownControl", { "RIGHT", controls.searchTradeButton, "LEFT" },
-		{ -labelSpacing, 0, 140, buttonHeight }, nil, function(idx, val)
-		self.timelessJewelLeagueSelect = val
-	end)
-	controls.searchTradeLeagueLabel = new("LabelControl", { "TOPRIGHT", controls.searchTradeLeagueSelect, "TOPLEFT" },
-		{ -labelSpacing, 0, 0, labelHeight }, "^7League:")
-	-- Realm selection
-	self.realmList = {
-		"PC", "Sony", "Xbox"
-	}
-	controls.realmSelection = new("DropDownControl", { "BOTTOMLEFT", controls.searchTradeLeagueSelect, "TOPLEFT" },
-		{ 0, -rowSpacing, 50, buttonHeight }, self.realmList, nil)
-	local function updateLeagues()
-		local currentRealmId = controls.realmSelection:GetSelValue():lower()
-		if self.tradeLeaguesList[currentRealmId] == nil then self.tradeLeaguesList[currentRealmId] = {} end
-		local leagueList = self.tradeLeaguesList[currentRealmId]
-		if leagueList and #leagueList > 0 then
-			controls.searchTradeLeagueSelect:SetList(leagueList)
-			-- restore the last league selected
-			for i, league in ipairs(leagueList) do
-				if league == self.timelessJewelLeagueSelect then
-					controls.searchTradeLeagueSelect:SetSel(i)
-					break
-				end
-			end
-		else
-			self.tradeQueryRequests:FetchLeagues(currentRealmId, function(leagues, errMsg)
-				if errMsg then
-					controls.msg.label = "^1Error fetching league list, default league will be used\n" .. errMsg .. "^7"
-					return
-				end
-				local tempLeagueTable = {}
-				for _, league in ipairs(leagues) do
-					if league ~= "Standard" and league ~= "Ruthless" and league ~= "Hardcore" and league ~= "Hardcore Ruthless" then
-						if not (league:find("Hardcore") or league:find("Ruthless")) then
-							-- set the dynamic, base league name to index 1 to sync league shown in dropdown on load with default/old behavior of open trade url
-							t_insert(tempLeagueTable, league)
-							for _, val in ipairs(leagueList) do
-								t_insert(tempLeagueTable, val)
-							end
-							leagueList = copyTable(tempLeagueTable)
-							self.tradeLeaguesList[currentRealmId] = leagueList
-						else
-							t_insert(leagueList, league)
-						end
-					end
-				end
-				t_insert(leagueList, "Standard")
-				t_insert(leagueList, "Hardcore")
-				t_insert(leagueList, "Ruthless")
-				t_insert(leagueList, "Hardcore Ruthless")
-				controls.searchTradeLeagueSelect:SetList(leagueList)
-			end)
-		end
-	end
-	controls.realmSelection.selFunc = function(idx, _)
-		self.selectedRealmIndex = idx
-		updateLeagues()
-	end
-	-- remember previous choice
-	controls.realmSelection:SetSel(self.selectedRealmIndex or 1)
-	-- manually call the function because when initialising, because the
-	-- function does not get called when the selection index stays the same
-	controls.realmSelection.selFunc(controls.realmSelection.selIndex) 
-	controls.realmLabel = new("LabelControl", { "TOPRIGHT", controls.realmSelection, "TOPLEFT" },
-		{ -labelSpacing, 0, 0, labelHeight }, "^7Realm:")
-
-	-- Buyout selection
-	local tradeTypes = {
-		"Instant buyout",
-		"Instant buyout and in person",
-		"In person (online in league)",
-		"In person (online)",
-		"Any (includes offline)"
-	}
-	controls.tradeTypeSelection = new("DropDownControl", { "BOTTOMRIGHT", controls.searchTradeButton, "TOPRIGHT" },
-		{ 0, -rowSpacing, 205, buttonHeight }, tradeTypes, function(index, value)
-			self.tradeTypeIndex = index
-		end)
-	-- remember previous choice
-	self.tradeTypeIndex = self.tradeTypeIndex or 1
-	controls.tradeTypeSelection:SetSel(self.tradeTypeIndex)
-
-	-- Checkbox to search a lot at once, or just a few
-	controls.searchMore = new("CheckBoxControl", { "BOTTOMRIGHT", controls.tradeTypeSelection, "TOPRIGHT" },
-		{ 0, -rowSpacing, 19 }, nil, function(state)
-		self.lastSearchMore = state
-	end,
-		"By default, this tool only searches for 4 or 10 (depending on conqueror) seeds at once to preserve sorting.\nThis option searches up to 180 or 60 seeds at once if you don't care about the sorting.",
-		false)
-	-- remember previous choice
-	if self.lastSearchMore then
-		controls.searchMore.state = self.lastSearchMore
-	end
-	controls.searchMoreLabel = new("LabelControl", { "RIGHT", controls.searchMore, "LEFT" },
-		{ -labelSpacing, 0, 0, labelHeight }, "^7Search Maximum Amount:")
 
 	-- Helper function to search a single socket
 	local function searchSingleSocket(socketId, socketInfo)
@@ -2785,7 +2522,6 @@ function TreeTabClass:FindTimelessJewel()
 		updateSearchList("", false)
 		controls.abyssAscendancySelect.selIndex = 1
 		wipeTable(timelessData.searchResults)
-		controls.searchTradeButton.enabled = false
 		clearProtected()
 	end)
 	controls.closeButton = new("ButtonControl", {"LEFT", controls.resetButton, "RIGHT"}, {buttonDivider, 0, buttonWidth, buttonHeight}, "Cancel", function()
@@ -2824,9 +2560,6 @@ function TreeTabClass:FindTimelessJewel()
 				return a.total > b.total 
 			end)
 			
-			controls.searchTradeButton.enabled = timelessData.searchResults and #timelessData.searchResults > 0
-			controls.searchTradeButton.lastSearch = nil
-			controls.searchTradeButton.label = "Open Trade URL"
 			controls.searchResults.highlightIndex = nil
 			controls.searchResults.selIndex = 1
 		else
@@ -2849,9 +2582,6 @@ function TreeTabClass:FindTimelessJewel()
 					timelessData.searchResults[#timelessData.searchResults + 1] = result
 				end
 				t_sort(timelessData.searchResults, function(a, b) return a.total > b.total end)
-				controls.searchTradeButton.enabled = timelessData.searchResults and #timelessData.searchResults > 0
-				controls.searchTradeButton.lastSearch = nil
-				controls.searchTradeButton.label = "Open Trade URL"
 				controls.searchResults.highlightIndex = nil
 				controls.searchResults.selIndex = 1
 			end

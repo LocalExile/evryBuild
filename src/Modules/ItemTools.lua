@@ -397,14 +397,9 @@ itemLib.wiki = {
 
 		itemLib.wiki.open(name)
 	end,
-	open = function(name)
-		local route = string.gsub(name, " ", "_")
-
-		OpenURL("https://www.poewiki.net/wiki/" .. route)
-		itemLib.wiki.triggered = true
-	end,
+	open = function(name) return false end,
 	matchesKey = function(key)
-		return key == itemLib.wiki.key
+		return false
 	end,
 	triggered = false
 }

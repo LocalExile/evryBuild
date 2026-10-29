@@ -8,6 +8,9 @@
 local startTime = GetTime()
 APP_NAME = "evryBuild - POB for LocalExile"
 
+-- No feature in this edition opens external websites. Documentation/credits remain readable as text.
+function OpenURL() return false end
+
 SetWindowTitle(APP_NAME)
 ConExecute("set vid_mode 8")
 ConExecute("set vid_resizable 3")
@@ -258,108 +261,13 @@ end
 ---@param callback fun(response:table, errMsg:string) @ response = { header, body }
 ---@param params? table @ params = { header, body }
 function launch:DownloadPage(url, callback, params)
-	params = params or {}
-	local script = [[
-		local url, requestHeader, requestBody, connectionProtocol, proxyURL, noSSL = ...
-		local responseHeader = ""
-		local responseBody = ""
-		ConPrintf("Downloading page at: %s", url)
-		local curl = require("lcurl.safe")
-		local easy = curl.easy()
-		if requestHeader then
-			local header = {}
-			for s in requestHeader:gmatch("[^\r\n]+") do
-    			table.insert(header, s)
-			end
-			easy:setopt(curl.OPT_HTTPHEADER, header)
-		end
-		easy:setopt_url(url)
-		easy:setopt(curl.OPT_USERAGENT, "Path of Building/]]..self.versionNumber..[[")
-		easy:setopt(curl.OPT_ACCEPT_ENCODING, "")
-		easy:setopt(curl.OPT_FOLLOWLOCATION, 1)
-		if requestBody then
-			easy:setopt(curl.OPT_POST, true)
-			easy:setopt(curl.OPT_POSTFIELDS, requestBody)
-		end
-		if connectionProtocol then
-			easy:setopt(curl.OPT_IPRESOLVE, connectionProtocol)
-		end
-		if proxyURL then
-			easy:setopt(curl.OPT_PROXY, proxyURL)
-		end
-		if noSSL then
-			easy:setopt(curl.OPT_SSL_VERIFYPEER, 0)
-			easy:setopt(curl.OPT_SSL_VERIFYHOST, 0)
-		end
-		easy:setopt_headerfunction(function(data)
-			responseHeader = responseHeader .. data
-			return true
-		end)
-		easy:setopt_writefunction(function(data)
-			responseBody = responseBody .. data
-			return true
-		end)
-		local _, error = easy:perform()
-		local code = easy:getinfo(curl.INFO_RESPONSE_CODE)
-		easy:close()
-		local errMsg
-		if error then
-			errMsg = error:msg()
-		elseif code ~= 200 then
-			errMsg = "Response code: "..code
-		elseif #responseBody == 0 then
-			errMsg = "No data returned"
-		end
-		ConPrintf("Download complete. Status: %s", errMsg or "OK")
-		return responseBody, errMsg, responseHeader
-	]]
-	local id = LaunchSubScript(script, "", "ConPrintf", url, params.header, params.body, self.connectionProtocol, self.proxyURL, self.noSSL or false)
-	if id then
-		self.subScripts[id] = {
-			type = "DOWNLOAD",
-			callback = function(responseBody, errMsg, responseHeader)
-				callback({header=responseHeader, body=responseBody}, errMsg)
-			end
-		}
-	end
+	if callback then callback(nil, "External downloads are not available in evryBuild. Use a local build code or LocalExile.") end
 end
 
-function launch:ApplyUpdate(mode)
-	if self.evryBuildEdition then return end
-	if mode == "basic" then
-		-- Need to revert to the basic environment to fully apply the update
-		LoadModule("UpdateApply", "Update/opFile.txt")
-		SpawnProcess(GetRuntimePath()..'/Update', 'UpdateApply.lua Update/opFileRuntime.txt')
-		Exit()
-	elseif mode == "normal" then
-		-- Update can be applied while normal environment is running
-		LoadModule("UpdateApply", "Update/opFile.txt")
-		Restart()
-		self.doRestart = "Updating..."
-	end
-end
+function launch:ApplyUpdate() end
 
-function launch:CheckForUpdate(inBackground)
-	if self.evryBuildEdition then
-		self.lastUpdateCheck = GetTime()
-		return
-	end
-	if self.updateCheckRunning then
-		return
-	end
-	self.updateCheckBackground = inBackground
-	self.updateMsg = "Initialising..."
-	self.updateProgress = "Checking..."
+function launch:CheckForUpdate()
 	self.lastUpdateCheck = GetTime()
-	local update = io.open("UpdateCheck.lua", "r")
-	local id = LaunchSubScript(update:read("*a"), "GetScriptPath,GetRuntimePath,GetWorkDir,MakeDir", "ConPrintf,UpdateProgress", self.connectionProtocol, self.proxyURL, self.noSSL or false)
-	if id then
-		self.subScripts[id] = {
-			type = "UPDATE"
-		}
-		self.updateCheckRunning = true
-	end
-	update:close()
 end
 
 function launch:ShowPrompt(r, g, b, str, func)

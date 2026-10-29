@@ -1,6 +1,9 @@
 ---[Help File Introduction]
 
-This file contains a list of shortcuts and other misc information about PoB functionality
+This file contains shortcuts and local planning help for evryBuild - POB for LocalExile.
+The only online feature is the configured LocalExile Preview / Forge Character API.
+Official account imports, trade, web sharing, update checks and external browser links are unavailable.
+Use saved XML files, pasted build codes and clipboard items for offline planning.
 While holding shift scroll bars in the help section and version history will jump to the previous/next section while scrolling
 
 ---[Contents]
@@ -26,7 +29,7 @@ Ctrl + F	Show find / search box (e.g. unique item / tree)
 Ctrl + M	Manage Trees (Tree tab only)
 Ctrl + N	New build (in build selection menu)
 Ctrl + S	Save build to file
-Ctrl + U	Check for update
+
 Ctrl + V or RMB	Paste
 Ctrl + W or
 Mouse 4	Close Build (gives save prompt if unsaved)
@@ -35,7 +38,7 @@ Ctrl + Y	Redo
 Ctrl + Z	Undo
 Ctrl + BSP / DEL	Faster text delete
 Ctrl + + /-/0	Zoom in / Out / Reset
-F1	Open item/gem/etc in poewiki.net, or if nothing to open, opens help file
+F1	Open local help
 F2	Rename item, set, etc.
 E	On an equipped item will open it on the edit menu on the right.
 Ctrl + LMB	Enable / disable gems

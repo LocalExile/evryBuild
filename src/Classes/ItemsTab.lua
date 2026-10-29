@@ -14,7 +14,6 @@ local m_min = math.min
 local m_ceil = math.ceil
 local m_floor = math.floor
 local m_modf = math.modf
-local buySimilar = LoadModule("Classes/CompareBuySimilar")
 
 local gemTooltip = LoadModule("Classes/GemTooltip")
 local rarityDropList = {
@@ -92,7 +91,7 @@ local ItemsTabClass = newClass("ItemsTab", "UndoHandler", "ControlHost", "Contro
 
 	self.showStatDifferences = true
 
-	-- PoB Trader class initialization
+	-- Preserve the local weight engine and legacy save metadata; online trade controls are removed.
 	self.tradeQuery = new("TradeQuery", self)
 
 	-- Set selector
@@ -114,16 +113,6 @@ local ItemsTabClass = newClass("ItemsTab", "UndoHandler", "ControlHost", "Contro
 	self.controls.setManage = new("ButtonControl", {"LEFT",self.controls.setSelect,"RIGHT"}, {4, 0, 90, 20}, "Manage...", function()
 		self:OpenItemSetManagePopup()
 	end)
-
-	-- Price Items
-	self.controls.priceDisplayItem = new("ButtonControl", {"TOPLEFT",self,"TOPLEFT"}, {96, 32, 310, 20}, "Trade for these items", function()
-		self.tradeQuery:PriceItem()
-	end)
-	self.controls.priceDisplayItem.tooltipFunc = function(tooltip)
-		tooltip:Clear()
-		tooltip:AddLine(16, "^7Contains searches from the official trading site to help find")
-		tooltip:AddLine(16, "^7similar or better items for this build")
-	end
 
 	-- Item slots
 	self.slots = { }
@@ -339,15 +328,6 @@ holding Shift will put it in the second.]])
 		self:SetDisplayItem()
 	end)
 
-	self.controls.displayItemBuySimilar = new("ButtonControl",
-		{ "LEFT", self.controls.removeDisplayItem, "RIGHT", true },
-		{ 8, 0, 100, 20 }, "Buy similar", function()
-			local itemSlot = self:GetComparisonSlotNameForItem(self.displayItem)
-			buySimilar.openPopup(self.displayItem, itemSlot, self.build)
-		end)
-	self.controls.displayItemBuySimilar.shown = function()
-		return self.displayItem
-	end
 	-- Section: Variant(s)
 
 	self.controls.displayItemSectionVariant = new("Control", {"TOPLEFT",self.controls.addDisplayItem,"BOTTOMLEFT"}, {0, 8, 0, function()

@@ -1,6 +1,6 @@
 # evryBuild - POB for LocalExile
 
-evryBuild adds **Forge Character** to PoB's **Import/Export Build** tab, below Build Sharing.
+evryBuild adds **Forge Character** to PoB's **Import/Export Build** tab, in Local Build Import / Export.
 It exports the active build in memory and sends it to a configured LocalExile receiver.
 **Preview** checks compatibility without creating a character.
 **Forge Character** asks the receiver to create a new character under your local account.
@@ -10,6 +10,20 @@ This fork starts from Community Fork **master**, release **2.67.2**, commit
 [`b32759ab`](https://github.com/PathOfBuildingCommunity/PathOfBuilding/tree/b32759ab0f31a1c8499a0d420cb0f0633d4fe478).
 The integration is part of the fork's source, so an overlay installer is not needed.
 The receiver and game server remain in a separate LocalExile project; this repository contains the PoB client side.
+
+## Network behavior
+
+The application's only HTTP channel is the configured LocalExile server's `/api/pob/preview` and
+`/api/pob/characters` routes. The UI and worker both validate the destination. Redirects and inherited
+proxy settings are disabled; remote LocalExile servers require verified HTTPS.
+
+GGG account imports/OAuth, trade searches, public-build browsing/recommendations, sharing-site uploads/downloads,
+URL shortening, online updates and browser launches are removed or blocked.
+Old official-account credentials in Settings.xml are ignored and are not written back when settings are saved.
+Local XML files, pasted build codes, clipboard items, comparison builds and ordinary planner calculations remain available.
+Complete passive-tree links are decoded locally; short links cannot be resolved.
+Tree assets come from the package, with no CDN download fallback. Use a new complete package to update or repair it.
+Third-party credits, licenses and historical provenance are preserved.
 
 ## Package the runnable application
 

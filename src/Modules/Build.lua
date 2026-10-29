@@ -1330,7 +1330,7 @@ Info:^7 You are trying to load a build created for a version of Path of Exile th
 not supported by us. You will have to convert it to the current game version to load it.
 To use a build newer than the current supported game version, you may have to update.
 To use a build older than the current supported game version, we recommend loading it
-in an older version of Path of Building Community instead.
+in an older version of evryBuild - POB for LocalExile instead.
 ]])
 	controls.label = new("LabelControl", nil, {0, 110, 0, 16}, colorCodes.WARNING..[[
 Warning:^7 Converting a build to a different game version may have side effects.
@@ -1505,44 +1505,7 @@ function buildMode:UpdateClassDropdowns(treeVersion)
 end
 
 function buildMode:OpenSimilarPopup()
-	local controls = { }
-	-- local width, height = self:GetSize()
-	local buildProviders = {
-		{
-			name = "PoB Archives",
-			impl = new("PoBArchivesProvider", "similar")
-		}
-	}
-	local width = 600
-	local height = function()
-		return main.screenH * 0.8
-	end
-	local padding = 50
-	controls.similarBuildList = new("ExtBuildListControl", nil, {0, padding, width, height() - 2 * padding}, buildProviders)
-	controls.similarBuildList.shown = true
-	controls.similarBuildList.height = function()
-		return height() - 2 * padding
-	end
-	controls.similarBuildList.width = function ()
-		return width - padding
-	end
-	controls.similarBuildList:SetImportCode(common.base64.encode(Deflate(self:SaveDB("code"))):gsub("+","-"):gsub("/","_"))
-	controls.similarBuildList:Init("PoB Archives")
-
-	-- controls.similarBuildList.shown = not controls.similarBuildList:IsShown()
-
-	controls.close = new("ButtonControl", nil, {0, height() - (padding + 20) / 2, 80, 20}, "Close", function()
-		main:ClosePopup()
-	end)
-	-- used in PopupDialog to dynamically size the popup
-	local function resizeFunc()
-		main.popups[1].height = height()
-		main.popups[1].y = function()
-			return m_floor((main.screenH - height()) / 2)
-		end
-		controls.close.y = height() - 35
-	end
-	main:OpenPopup(width, height(), "Similar Builds", controls, nil, nil, nil, nil, resizeFunc)
+	main:OpenMessagePopup("evryBuild", "External build recommendations are not available. Open a local build for comparison.")
 end
 
 -- Refresh the set of controls used to select main group/skill/minion

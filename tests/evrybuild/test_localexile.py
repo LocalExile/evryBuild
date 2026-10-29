@@ -80,10 +80,15 @@ class IntegrationTests(unittest.TestCase):
                 return self.popup
             end
             function main:ClosePopup() self.popup = nil end
-            function new(kind, anchor, rect, value, callback)
+            function new(kind, anchor, rect, value, callback, ...)
                 local c = {kind=kind, anchor=anchor, rect=rect, buf=tostring(value or ''), enabled=true}
                 if kind == 'ButtonControl' then c.onClick = callback end
-                function c:SetText(value) self.buf = tostring(value) end
+                if kind == 'DropDownControl' then c.list=value; c.selIndex=1 end
+                if kind == 'EditControl' then c.onChange=select(3, ...) end
+                function c:SetText(value, trigger)
+                    self.buf = tostring(value)
+                    if self.onChange and trigger ~= false then self.onChange(self.buf) end
+                end
                 function c:SetProtected(value) self.protected = value end
                 return c
             end
@@ -125,6 +130,104 @@ class IntegrationTests(unittest.TestCase):
                 assert(not M.ValidateServer(url), url)
             end
         ''')
+
+    def test_request_and_worker_refuse_non_localexile_routes_without_starting_network(self):
+        self.lua.run(r'''
+            local worker = assert(loadstring(M.RequestScript))
+            for _, url in ipairs({
+                'https://www.pathofexile.com/character-window/get-items',
+                'https://pobb.in/example', 'http://127.0.0.1:20496/other',
+                'http://127.0.0.1:20496/api/pob/preview?next=external',
+                'https://example.com/%2e%2e/api/pob/preview',
+                'http://example.com/api/pob/preview'
+            }) do
+                local failure
+                M.Request(url, 'synthetic-token', {}, function(reply, err) assert(not reply); failure=err end)
+                assert(failure and #workers == 0, url)
+                local body, err, status = worker(url, 'synthetic-token', '{}')
+                assert(not body and err and status == 0, url)
+            end
+            assert(M.ValidateRequestUrl('https://my-localexile.example/pob/api/pob/preview'))
+        ''')
+
+    def test_generic_downloads_updates_and_browser_links_never_start_workers(self):
+        self.lua.run('launchFile = ' + json.dumps((REPOSITORY / 'src/Launch.lua').as_posix()))
+        self.lua.run(r'''
+            function GetTime() return 1 end
+            function SetWindowTitle() end
+            function ConExecute() end
+            function SetMainObject() end
+            browserCalls=0
+            function OpenURL() browserCalls=browserCalls+1 end
+            assert(loadfile(launchFile))()
+            local count=0
+            for _, url in ipairs({'https://www.pathofexile.com', 'https://pobb.in', 'http://localhost/unused'}) do
+                launch:DownloadPage(url,function(reply,err) assert(reply==nil and err); count=count+1 end)
+                assert(OpenURL(url)==false)
+            end
+            launch.evryBuildEdition=false -- This policy must not depend on an optional edition flag.
+            launch:CheckForUpdate(); launch:ApplyUpdate('normal')
+            assert(count==3 and browserCalls==0 and #workers==0)
+        ''')
+
+    def test_legacy_account_and_build_site_apis_are_offline(self):
+        self.lua.run('apiFile = ' + json.dumps((REPOSITORY / 'src/Classes/PoEAPI.lua').as_posix()))
+        self.lua.run('sitesFile = ' + json.dumps((REPOSITORY / 'src/Modules/BuildSiteTools.lua').as_posix()))
+        self.lua.run(r'''
+            local methods, construct
+            function newClass(name, constructor) methods={}; construct=constructor; return methods end
+            assert(loadfile(apiFile))()
+            local account=setmetatable({}, {__index=methods}); construct(account,'old-secret','refresh',0)
+            assert(account.authToken==nil and account.refreshToken==nil)
+            local calls=0
+            account:ValidateAuth(function(valid,err) assert(not valid and err); calls=calls+1 end)
+            account:FetchAuthToken(function(err) assert(err); calls=calls+1 end)
+            account:DownloadCharacterList('pc',function(value,err) assert(not value and err); calls=calls+1 end)
+            assert(loadfile(sitesFile))()
+            assert(#buildSites.websiteList==0 and buildSites.UploadBuild('private-build')==nil)
+            buildSites.DownloadBuild('https://pobb.in/build',nil,function(valid,err) assert(not valid and err); calls=calls+1 end)
+            assert(calls==4 and #workers==0)
+        ''')
+
+    def test_import_tab_keeps_offline_codes_and_removes_account_and_web_controls(self):
+        self.lua.run('importFile = ' + json.dumps((REPOSITORY / 'src/Classes/ImportTab.lua').as_posix()))
+        self.lua.run(r'''
+            itemLib={influenceInfo={all={}}}; colorCodes={NEGATIVE='',POSITIVE=''}
+            local constructor
+            function newClass(name,...) constructor=select(select('#',...),...); return {} end
+            function LoadModule(name, tab) assert(name=='Modules/LocalExile'); M.Attach(tab) end
+            build.partyTab={}; build.dbFileName=false
+            function build:Shutdown() self.closed=true end
+            function build:Init(file,name,xml) self.loadedXML=xml end
+            local target={controls={},build=build,ControlHost=function() end,Control=function() end}
+            assert(loadfile(importFile))(); constructor(target,build)
+            local c=target.controls
+            assert(c.localExileSend and c.generateCode and c.generateCodeCopy and c.importCodeIn)
+            assert(not c.authenticateButton and not c.sectionOauthCharImport and not c.sectionCharSiteImport)
+            assert(not c.exportFrom and not c.generateCodeByLink)
+            for _,url in ipairs({'https://pobb.in/example','https://www.pathofexile.com/account','pob://pobbin/id'}) do
+                c.importCodeIn:SetText(url); assert(not target.importCodeValid)
+            end
+            common.base64.decode=function() return 'compressed' end
+            Inflate=function() return '<PathOfBuilding />' end
+            c.importCodeIn:SetText('offline-code'); assert(target.importCodeValid)
+            c.importCodeGo.onClick()
+            assert(build.closed and build.loadedXML=='<PathOfBuilding />' and build.viewMode=='TREE')
+            assert(#workers==0)
+        ''')
+
+    def test_all_application_lua_modules_compile(self):
+        files = list((REPOSITORY / 'src/Classes').glob('*.lua')) + list((REPOSITORY / 'src/Modules').glob('*.lua'))
+        files += list((REPOSITORY / 'src').glob('*.lua'))
+        for file in files:
+            self.lua.run('assert(loadfile(' + json.dumps(file.as_posix()) + '))')
+
+    def test_only_localexile_has_an_http_transport(self):
+        roots = [REPOSITORY / 'src/Classes', REPOSITORY / 'src/Modules']
+        files = [p for root in roots for p in root.glob('*.lua')] + list((REPOSITORY / 'src').glob('*.lua'))
+        transports = [p for p in files if 'lcurl.safe' in p.read_text(encoding='utf-8')]
+        # HeadlessWrapper only has a compatibility require-name check, not a transport.
+        self.assertEqual(sorted(p.name for p in transports), ['HeadlessWrapper.lua', 'LocalExile.lua'])
 
     def test_preferences_only_save_nonsecret_fields(self):
         self.lua.run(r'''
@@ -230,7 +333,7 @@ class IntegrationTests(unittest.TestCase):
             def do_POST(self):
                 requests.append((self.path, self.headers.get("Authorization")))
                 self.rfile.read(int(self.headers.get("Content-Length", "0")))
-                if self.path == "/redirect":
+                if self.path == "/api/pob/characters":
                     self.send_response(302)
                     self.send_header("Location", "/leak-token")
                     self.end_headers()
@@ -251,16 +354,16 @@ class IntegrationTests(unittest.TestCase):
             self.lua.run("testUrl = " + json.dumps(url))
             self.lua.run(r'''
                 local worker = assert(loadstring(M.RequestScript))
-                local body, error, status = worker(testUrl .. '/preview', 'synthetic-token', '{}')
+                local body, error, status = worker(testUrl .. '/api/pob/preview', 'synthetic-token', '{}')
                 assert(not error, tostring(error)); assert(status == 200 and body:find('true',1,true))
-                local body, error, status = worker(testUrl .. '/redirect', 'synthetic-token', '{}')
+                local body, error, status = worker(testUrl .. '/api/pob/characters', 'synthetic-token', '{}')
                 assert(body == nil and status == 302 and error:find('redirected',1,true))
             ''')
         finally:
             server.shutdown()
             server.server_close()
             thread.join()
-        self.assertEqual(requests, [("/preview", "Bearer synthetic-token"), ("/redirect", "Bearer synthetic-token")])
+        self.assertEqual(requests, [("/api/pob/preview", "Bearer synthetic-token"), ("/api/pob/characters", "Bearer synthetic-token")])
 
 
 if __name__ == "__main__":

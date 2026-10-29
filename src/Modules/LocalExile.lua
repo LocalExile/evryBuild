@@ -13,8 +13,10 @@ local function trim(value)
 	return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-function M.ValidateServer(value)
-	local url = trim(value):gsub("/+$", "")
+-- The UI and worker use the same validator; only the dedicated LocalExile API routes are permitted.
+local validateServerSource = [==[
+return function(value)
+	local url = tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("/+$", "")
 	if #url > 2048 or url:find("[%s%c]") or url:find("[?#]") then
 		return nil, "Enter a server URL without spaces, query parameters or a fragment."
 	end
@@ -35,7 +37,7 @@ function M.ValidateServer(value)
 	if not host or port and (tonumber(port) < 1 or tonumber(port) > 65535) then
 		return nil, "The server host or port is invalid."
 	end
-	if path:find("\\", 1, true) or path:find("/../", 1, true) or path:match("/%.%.$") then
+	if path:find("%", 1, true) or path:find("\\", 1, true) or path:find("/../", 1, true) or path:match("/%.%.$") then
 		return nil, "The server URL contains an invalid path."
 	end
 	local loopback = host:lower() == "localhost" or host == "127.0.0.1" or host == "[::1]"
@@ -43,6 +45,19 @@ function M.ValidateServer(value)
 		return nil, "Remote servers require HTTPS. HTTP is allowed only for localhost, 127.0.0.1 or [::1]."
 	end
 	return scheme .. "://" .. authority .. path
+end
+
+]==]
+M.ValidateServer = assert(loadstring(validateServerSource))()
+
+function M.ValidateRequestUrl(url)
+	local base, endpoint = tostring(url or ""):match("^(.-)/api/pob/(%a+)$")
+	if endpoint ~= "preview" and endpoint ~= "characters" then
+		return nil, "Only LocalExile preview and character-creation requests are supported."
+	end
+	local server, err = M.ValidateServer(base)
+	if not server then return nil, err end
+	return server .. "/api/pob/" .. endpoint
 end
 
 function M.ReadPreferences(path)
@@ -88,15 +103,23 @@ function M.SavePreferences(path, preferences)
 	return true
 end
 
--- A dedicated PoB worker avoids DownloadPage's redirect-following and global disable-TLS option.
+-- This dedicated worker is the only network transport in evryBuild.
 -- No body, authorization header or token is written to PoB's console.
-M.RequestScript = [[
+M.RequestScript = "local ValidateServer = assert(loadstring(" .. string.format("%q", validateServerSource) .. "))()\n" .. [[
 	local url, authorization, body = ...
+	local base, endpoint = tostring(url or ""):match("^(.-)/api/pob/(%a+)$")
+	if endpoint ~= "preview" and endpoint ~= "characters" then
+		return nil, "Only LocalExile API requests are supported.", 0
+	end
+	local server, validationError = ValidateServer(base)
+	if not server then return nil, validationError, 0 end
+	url = server .. "/api/pob/" .. endpoint
 	local curl = require("lcurl.safe")
 	local easy = curl.easy()
 	local chunks, length = {}, 0
 	local tooLarge = false
 	easy:setopt_url(url)
+	easy:setopt(curl.OPT_PROXY, "") -- Do not inherit a proxy destination from the desktop environment.
 	easy:setopt(curl.OPT_POST, true)
 	easy:setopt(curl.OPT_POSTFIELDS, body)
 	easy:setopt(curl.OPT_HTTPHEADER, {
@@ -125,6 +148,9 @@ M.RequestScript = [[
 ]]
 
 function M.Request(url, token, payload, callback)
+	local validated, validationError = M.ValidateRequestUrl(url)
+	if not validated then callback(nil, validationError); return end
+	url = validated
 	local body, encodeError = json.encode(payload)
 	if not body then callback(nil, encodeError); return end
 	local id = LaunchSubScript(M.RequestScript, "", "", url, token, body)

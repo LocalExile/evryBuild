@@ -43,11 +43,6 @@ if arg and isValueInTable(arg, "--no-jit") then
 	ConPrintf("JIT Disabled")
 end
 
-if arg and isValueInTable(arg, "--no-ssl") then
-	launch.noSSL = true
-	ConPrintf("SSL verification disabled")
-end
-
 local tempTable1 = { }
 local tempTable2 = { }
 
@@ -65,24 +60,9 @@ function main:Init()
 	self.gameAccounts = { }
 
 	local ignoreBuild
-	if arg[1] then
-		local importLink = buildSites.ParseImportLinkFromURI(arg[1])
-		buildSites.DownloadBuild(arg[1], nil, function(isSuccess, data, importLink)
-			if not isSuccess then
-				self:SetMode("BUILD", false, data)
-			else
-				local xmlText = Inflate(common.base64.decode(data:gsub("-","+"):gsub("_","/")))
-				self:SetMode("BUILD", false, "Imported Build", xmlText, false, importLink)
-				self.newModeChangeToTree = true
-			end
-		end)
-		arg[1] = nil -- Protect against downloading again this session.
-		ignoreBuild = true
-	end
-
-	if not ignoreBuild then
-		self:SetMode("BUILD", false, "Unnamed build")
-	end
+	-- URL/protocol imports cannot initiate downloads in this edition.
+	if arg then arg[1] = nil end
+	self:SetMode("BUILD", false, "Unnamed build")
 	if launch.devMode or (GetScriptPath() == GetRuntimePath() and not launch.installedMode) then
 		-- If running in dev mode or standalone mode, put user data in the script path
 		self.userPath = GetScriptPath().."/"
@@ -92,7 +72,7 @@ function main:Init()
 		if not self.userPath then
 			self:OpenPathPopup(invalidPath, errMsg, ignoreBuild)
 		else
-			self.userPath = self.userPath.."/Path of Building/"
+			self.userPath = self.userPath.."/evryBuild/"
 		end
 	end
 
@@ -115,7 +95,7 @@ function main:Init()
 	self.migrateEldritchImplicits = true
 	self.notSupportedModTooltips = true
 	self.notSupportedTooltipText = " ^8(Not supported in PoB yet)"
-	self.showPublicBuilds = true
+	self.showPublicBuilds = false
 	self.showFlavourText = true
 	self.showAnimations = true
 	self.showAllItemAffixes = true
@@ -230,7 +210,7 @@ function main:Init()
 	end
 	self.controls.forkLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {148, -26, 0, 16}, "")
 	self.controls.forkLabel.label = function()
-		return "^8PoB Community Fork"
+		return "^8POB for LocalExile"
 	end
 	self.controls.versionLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {148, -2, 0, 16}, "")
 	self.controls.versionLabel.label = function()
@@ -523,26 +503,12 @@ function main:LoadSettings(ignoreBuild)
 					end
 				end
 				self:SetMode(node.attrib.mode, unpack(args))
-			elseif node.elem == "Accounts" then
-				self.lastAccountName = node.attrib.lastAccountName
-				self.lastRealm = node.attrib.lastRealm
-				self.lastLeague = node.attrib.lastLeague
-				self.lastToken = node.attrib.lastToken
-				self.lastRefreshToken = node.attrib.lastRefreshToken
-				self.tokenExpiry = tonumber(node.attrib.tokenExpiry)
-				for _, child in ipairs(node) do
-					if child.elem == "Account" then
-						self.gameAccounts[child.attrib.accountName] = {
-							sessionID = child.attrib.sessionID,
-						}
-					end
-				end
+			-- Legacy official-account credentials are intentionally not loaded.
 			elseif node.elem == "Misc" then
 				if node.attrib.buildSortMode then
 					self.buildSortMode = node.attrib.buildSortMode
 				end
 				launch.connectionProtocol = tonumber(node.attrib.connectionProtocol)
-				launch.proxyURL = node.attrib.proxyURL
 				if node.attrib.buildPath then
 					self.buildPath = node.attrib.buildPath
 				end
@@ -723,11 +689,6 @@ function main:SaveSettings()
 		return true
 	end
 	t_insert(setXML, mode)
-	local accounts = { elem = "Accounts", attrib = { lastAccountName = self.lastAccountName, lastRealm = self.lastRealm, lastLeague = self.lastLeague, lastToken = self.lastToken, lastRefreshToken = self.lastRefreshToken, tokenExpiry = tostring(self.tokenExpiry) } }
-	for accountName, account in pairs(self.gameAccounts) do
-		t_insert(accounts, { elem = "Account", attrib = { accountName = accountName, sessionID = account.sessionID } })
-	end
-	t_insert(setXML, accounts)
 	local sharedItemList = { elem = "SharedItems" }
 	for _, verItem in ipairs(self.sharedItemList) do
 		t_insert(sharedItemList, { elem = "Item", [1] = verItem.raw })
@@ -743,7 +704,6 @@ function main:SaveSettings()
 	t_insert(setXML, { elem = "Misc", attrib = {
 		buildSortMode = self.buildSortMode,
 		connectionProtocol = tostring(launch.connectionProtocol),
-		proxyURL = launch.proxyURL,
 		buildPath = (self.buildPath ~= self.defaultBuildPath and self.buildPath or nil),
 		nodePowerTheme = self.nodePowerTheme,
 		colorPositive = self.colorPositive,
@@ -899,33 +859,6 @@ function main:OpenOptionsPopup(savedState)
 
 	drawSectionHeader("app", "Application options")
 
-	controls.connectionProtocol = new("DropDownControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 100, 18 }, {
-		{ label = "Auto", protocol = 0 },
-		{ label = "IPv4", protocol = 1 },
-		{ label = "IPv6", protocol = 2 },
-	}, function(index, value)
-		self.connectionProtocol = value.protocol
-	end)
-	controls.connectionProtocolLabel = new("LabelControl", { "RIGHT", controls.connectionProtocol, "LEFT" }, { defaultLabelSpacingPx, 0, 0, 16 }, "^7Connection Protocol:")
-	controls.connectionProtocol.tooltipText = "Changes which protocol is used when downloading updates and importing builds."
-	controls.connectionProtocol:SelByValue(launch.connectionProtocol, "protocol")
-
-	nextRow()
-	controls.proxyType = new("DropDownControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 80, 18 }, {
-		{ label = "HTTP", scheme = "http" },
-		{ label = "SOCKS", scheme = "socks5" },
-		{ label = "SOCKS5H", scheme = "socks5h" },
-	})
-	controls.proxyLabel = new("LabelControl", { "RIGHT", controls.proxyType, "LEFT" }, { defaultLabelSpacingPx, 0, 0, 16 }, "^7Proxy server:")
-	controls.proxyURL = new("EditControl", { "LEFT", controls.proxyType, "RIGHT" }, { 4, 0, 206, 18 })
-
-	if launch.proxyURL then
-		local scheme, url = launch.proxyURL:match("(%w+)://(.+)")
-		controls.proxyType:SelByValue(scheme, "scheme")
-		controls.proxyURL:SetText(url)
-	end
-
-	nextRow()
 	controls.dpiScaleOverride = new("DropDownControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 150, 18 }, {
 		{ label = "Use system default", percent = 0 },
 		{ label = "100%", percent = 100 },
@@ -1014,9 +947,6 @@ function main:OpenOptionsPopup(savedState)
 	end)
 	
 	nextRow()
-	controls.showPublicBuilds = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Show Latest/Trending builds:", function(state)
-		self.showPublicBuilds = state
-	end)
 
 	nextRow()
 	controls.showFlavourText = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Styled Tooltips with Flavour Text:", function(state)
@@ -1151,7 +1081,6 @@ function main:OpenOptionsPopup(savedState)
 	controls.betaTest.state = self.betaTest
 	controls.edgeSearchHighlight.state = self.edgeSearchHighlight
 	controls.titlebarName.state = self.showTitlebarName
-	controls.showPublicBuilds.state = self.showPublicBuilds
 	controls.showFlavourText.state = self.showFlavourText
 	controls.showAnimations.state = self.showAnimations
 	controls.showAllItemAffixes.state = self.showAllItemAffixes
@@ -1165,12 +1094,6 @@ function main:OpenOptionsPopup(savedState)
 
 	-- lock the Save/Cancel buttons to the bottom so they don't scroll away
 	controls.save = new("ButtonControl", { "BOTTOM", nil, "BOTTOM" }, {-45, -10, 80, 20}, "Save", function()
-		launch.connectionProtocol = tonumber(self.connectionProtocol)
-		if controls.proxyURL.buf:match("%w") then
-			launch.proxyURL = controls.proxyType.list[controls.proxyType.selIndex].scheme .. "://" .. controls.proxyURL.buf
-		else
-			launch.proxyURL = nil
-		end
 		if controls.buildPath.buf:match("%S") then
 			self.buildPath = controls.buildPath.buf
 			if not self.buildPath:match("[\\/]$") then
@@ -1427,11 +1350,9 @@ function main:OpenAboutPopup(helpSectionIndex)
 	controls.close = new("ButtonControl", {"TOPRIGHT",nil,"TOPRIGHT"}, {-10, 10, 50, 20}, "Close", function()
 		self:ClosePopup()
 	end)
-	controls.version = new("LabelControl", nil, {0, 18, 0, 18}, "^7Path of Building Community Fork v"..launch.versionNumber)
+	controls.version = new("LabelControl", nil, {0, 18, 0, 18}, "^7evryBuild - POB for LocalExile v"..launch.versionNumber)
 	controls.forum = new("LabelControl", nil, {0, 36, 0, 18}, "^7Based on Openarl's Path of Building")
-	controls.github = new("ButtonControl", nil, {0, 62, 438, 18}, "^7GitHub page: ^x4040FFhttps://github.com/PathOfBuildingCommunity/PathOfBuilding", function(control)
-		OpenURL("https://github.com/PathOfBuildingCommunity/PathOfBuilding")
-	end)
+	controls.github = new("LabelControl", nil, {0, 62, 0, 18}, "^7Based on Openarl and the Path of Building community contributors; see LICENSE.md.")
 	controls.verLabel = new("ButtonControl", {"TOPLEFT", nil, "TOPLEFT"}, {10, 85, 100, 18}, "^7Version history:", function()
 		controls.changelog.list = changeList
 		controls.changelog.sectionHeights = changeVersionHeights
@@ -1720,7 +1641,7 @@ function main:OpenNewFolderPopup(path, onClose)
 end
 
 -- Show an error popup if a file cannot be read due to cloud provider unavailability.
--- Help button opens a URL to PoB's GitHub wiki.
+-- Recovery advice is available locally; no external help page is opened.
 function main:OpenCloudErrorPopup(fileName)
 	local provider, _, status = GetCloudProvider(fileName)
 	ConPrintf('^1Error: file offline "%s" provider: "%s" status: "%s"', fileName or "?", provider, status)
@@ -1731,17 +1652,12 @@ function main:OpenCloudErrorPopup(fileName)
 	local statusText = tostring(status) or "nil"
 	local msg = "\n^7Cannot read file.\n\nMake sure "..provider.." is running then restart "..APP_NAME.." and try again."..
 		fileName.."\nstatus: "..statusText.."\n\n"..version
-	local url = "https://github.com/PathOfBuildingCommunity/PathOfBuilding/wiki/CloudError"
 	local controls = { }
 	local numMsgLines = 0
 	for line in string.gmatch(msg .. "\n", "([^\n]*)\n") do
 		t_insert(controls, new("LabelControl", nil, {0, 20 + numMsgLines * 16, 0, 16}, line))
 		numMsgLines = numMsgLines + 1
 	end
-	controls.help = new("ButtonControl", nil, {-55, 40 + numMsgLines * 16, 80, 20}, "Help (web)", function()
-		OpenURL(url)
-	end)
-	controls.help.tooltipText = url
 	controls.close = new("ButtonControl", nil, {55, 40 + numMsgLines * 16, 80, 20}, "Ok", function()
 		main:ClosePopup()
 	end)

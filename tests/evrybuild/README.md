@@ -25,6 +25,11 @@ temporary test profile. A temporary loopback HTTP server checks the actual curl
 request and proves that redirects are refused without forwarding its synthetic
 token.
 
+The suite also compiles the application Lua modules and exercises the LocalExile-only network policy:
+official-account compatibility calls cannot authenticate, generic downloads/updates/browser links cannot
+start workers, web links cannot be imported, and only the two LocalExile API routes reach curl.
+Offline build-code import and the planner's Generate/Copy controls remain available.
+
 These checks require no LocalExile receiver or game client. They cover integration
 behavior rather than native GUI rendering. On other operating systems, the suite
 reports an explicit skip because the bundled runtime libraries are Windows DLLs.

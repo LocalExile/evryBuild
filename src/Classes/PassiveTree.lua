@@ -2,7 +2,7 @@
 --
 -- Class: Passive Tree
 -- Passive skill tree class.
--- Responsible for downloading and loading the passive tree data and assets
+-- Loads the bundled passive tree data and assets without network access
 -- Also pre-calculates and pre-parses most of the data need to use the passive tree, including the node modifiers
 --
 local pairs = pairs
@@ -33,22 +33,6 @@ local classArt = {
 local legacySkillsPerOrbit = { 1, 6, 12, 12, 40 }
 local legacyOrbitRadii = { 0, 82, 162, 335, 493 }
 
--- Retrieve the file at the given URL
--- This is currently disabled as it does not work due to issues
--- its possible to fix this but its never used due to us performing preprocessing on tree
-local function getFile(URL)
-	local page = ""
-	local easy = common.curl.easy()
-	easy:setopt_url(URL)
-	easy:setopt_writefunction(function(data)
-		page = page..data
-		return true
-	end)
-	easy:perform()
-	easy:close()
-	return #page > 0 and page
-end
-
 local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 	self.treeVersion = treeVersion
 	local versionNum = treeVersions[treeVersion].num
@@ -71,10 +55,9 @@ local PassiveTreeClass = newClass("PassiveTree", function(self, treeVersion)
 			ConPrintf("Converting passive tree data json")
 			page = pageFile:read("*a")
 			pageFile:close()
-		elseif main.allowTreeDownload then  -- Enable downloading with Ctrl+Shift+F5 (currently disabled)
-			ConPrintf("Downloading passive tree data...")
-			page = getFile("https://www.pathofexile.com/passive-skill-tree")
+
 		end
+		if not page then error("Missing bundled passive-tree data. Extract the complete evryBuild package again.") end
 		local treeData = page:match("var passiveSkillTreeData = (%b{})")
 		if treeData then
 			treeText = "local tree=" .. jsonToLua(page:match("var passiveSkillTreeData = (%b{})"))
@@ -879,7 +862,7 @@ function PassiveTreeClass:ProcessNode(node)
 	self:ProcessStats(node)
 end
 
--- Checks if a given image is present and downloads it from the given URL if it isn't there
+-- Loads local tree images only; URL fields remain inert compatibility metadata.
 function PassiveTreeClass:LoadImage(imgName, url, data, ...)
 	local imgFile = io.open("TreeData/"..imgName, "r")
 	if imgFile then
@@ -889,16 +872,8 @@ function PassiveTreeClass:LoadImage(imgName, url, data, ...)
 		if imgFile then
 			imgFile:close()
 			imgName = self.treeVersion.."/"..imgName
-		elseif main.allowTreeDownload then -- Enable downloading with Ctrl+Shift+F5 (currently disabled)
-			ConPrintf("Downloading '%s'...", imgName)
-			local data = getFile(url)
-			if data and not data:match("<!DOCTYPE html>") then
-				imgFile = io.open("TreeData/"..imgName, "wb")
-				imgFile:write(data)
-				imgFile:close()
-			else
-				ConPrintf("Failed to download: %s", url)
-			end
+		else
+			ConPrintf("Bundled tree image unavailable: %s", imgName)
 		end
 	end
 	data.handle = NewImageHandle()
