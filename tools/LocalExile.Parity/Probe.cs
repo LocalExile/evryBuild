@@ -37,12 +37,18 @@ static class Probe
         var items = PlayerInventories.For(character, Program.Items);
         var inactive = Program.InactiveItems.GetValueOrDefault(character) ?? [];
         var equipped = Enumerable.Range(1, 15).Select(row => (byte)row).Where(row => row != PlayerInventories.Cursor)
-            .SelectMany(row => items.Items(row).Select(i => new { Row = (int)row, Name = Program.Items.ByHash(i.Item.TypeHash)?.Name, Inactive = inactive.Contains(i.Id) }));
+            .SelectMany(row => items.Items(row).Select(i =>
+            {
+                var type = Program.Items.ByHash(i.Item.TypeHash);
+                var defences = type is not null && Program.Items.Defences(type) is { } values
+                    ? ItemDefences.Calculate(i.Item, values, Program.Items.Mods) : default;
+                return new { Row = (int)row, type?.Name, Inactive = inactive.Contains(i.Id), defences.Armour, defences.Evasion, defences.EnergyShield };
+            }));
         return new
         {
             Equipment = equipped.ToList(),
             p.Level, Life = (long)p.Life, Mana = (long)p.Mana, EnergyShield = (long)p.EnergyShield, Ward = (long)p.Ward,
-            p.Strength, p.Dexterity, p.Intelligence, p.Armour, p.Evasion, p.Accuracy,
+            p.Strength, p.Dexterity, p.Intelligence, p.Armour, p.ArmourPct, p.Evasion, p.EvasionPct, p.EnergyShieldPct, p.Accuracy,
             p.FireResistance, p.ColdResistance, p.LightningResistance, p.ChaosResistance,
             p.FireMaxResistance, p.ColdMaxResistance, p.LightningMaxResistance, p.ChaosMaxResistance,
             p.BlockChance, p.SpellBlockChance, p.SpellSuppressionChance, p.MovementVelocityPct,

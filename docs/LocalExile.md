@@ -95,9 +95,8 @@ Anything else is several commands: run the first, pick the new item up on your c
 Click **Copy Command** again for each next line. Commands cannot set quality, item level, a rare's name,
 fractured modifiers or the mirrored state; **Send** keeps those.
 
-Modifiers are matched to the client's data, and a line PoB's text cannot identify is skipped and listed as a warning.
-For a unique, **Send** uses the server's catalogue in the save database for its exact modifiers,
-keeping PoB's roll where the stats match and the top of the roll otherwise.
+Uniques get their exact modifiers from the server's catalogue, and other lines are matched as described in
+[current encoding limits](#current-encoding-limits).
 Ruthless characters are refused, and a character needs a save first, so log in with it once.
 
 ## Troubleshooting
@@ -169,6 +168,14 @@ The converter preserves supported native classes/levels, ordinary passives/maste
 modifier IDs and rolls, item identities, sockets/links and native gems from the active build sets.
 Unsupported gameplay effects remain when their native IDs/values are representable.
 Unresolvable modifier descriptions are reported separately as encoding omissions.
+
+Modifier lines are matched to the client's own `Mods` table by their wording, using PoB's text for each modifier.
+Weapons and armour prefer local stats, and rare and magic items prefer prefixes and suffixes.
+A catalyst or magnitude modifier can lift a value past its native roll: the value is kept, with a warning.
+A unique uses the server's catalogue when the database has one, keeping PoB's roll where the stats match and the top
+of the roll otherwise. A Foulborn unique is treated as its ordinary unique, with its mutated lines matched separately.
+A line that matches nothing is skipped and reported, and a jewel with a `Cluster Jewel Skill` line is refused.
+The dialog shows the first 45 warnings. The full list is in the `.export.json` report beside the backup.
 
 The current save adapter creates unascended characters; ascendancy selections/nodes, jewels/cluster expansions,
 passive overrides, unsupported special/disconnected nodes, bandit/Pantheon rewards and item-granted skill groups

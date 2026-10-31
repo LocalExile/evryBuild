@@ -42,8 +42,10 @@ Reading a line in the table:
 A low attribute can make the server switch off an item, usually through a socketed gem whose requirement is not met.
 That happens more often here than in game, because the attributes from jewels and skipped modifiers are gone.
 
-To find the cause of a mismatch, list PoB's sources for that stat with `modDB:Tabulate` and compare them with the
-server's total. A missing percentage often points straight at one passive or mastery.
+When armour, evasion or energy shield differ on one item, the report names that item. That usually means the exporter
+chose the wrong modifier, so compare the item's text with what was saved before suspecting the server.
+For anything else, list PoB's sources for that stat with `modDB:Tabulate` and compare them with the server's total.
+A missing percentage often points straight at one passive or mastery.
 
 ## Limits
 

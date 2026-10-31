@@ -92,12 +92,28 @@ class Compare(unittest.TestCase):
         self.assertIn('+1 to Life', parity.render(parity.compare({}, {}), [dict(base='Ring', line='+1 to Life')], [], 'identity', True))
 
 
+class ItemDifferences(unittest.TestCase):
+    def equipment(self, armour, inactive=False):
+        return [dict(Row=1, Name='Plate Vest', Inactive=inactive, Armour=armour, Evasion=0, EnergyShield=0)]
+
+    def test_an_item_with_other_defences_is_named(self):
+        rows = parity.item_differences({'Body Armour': dict(Armour=2548, Evasion=0, EnergyShield=0)}, self.equipment(1695))
+        self.assertEqual(['Plate Vest: PoB 2548 armour, server 1695'], rows)
+
+    def test_rounding_and_inactive_items_are_not_reported(self):
+        expected = {'Body Armour': dict(Armour=100, Evasion=0, EnergyShield=0)}
+        self.assertEqual([], parity.item_differences(expected, self.equipment(101)))
+        self.assertEqual([], parity.item_differences(expected, self.equipment(50, inactive=True)))
+
+
 class RealBuild(unittest.TestCase):
     def test_attributes_agree_for_a_real_build(self):
         if not (LOCALEXILE and BUILD): self.skipTest('Pass --localexile and --build to compare a real build.')
-        rows = {r['stat']: r for r in parity.run(LOCALEXILE, BUILD)['rows']}
+        result = parity.run(LOCALEXILE, BUILD)
+        rows = {r['stat']: r for r in result['rows']}
         for stat in ('Strength', 'Dexterity', 'Intelligence', 'Mana', 'Armour', 'Energy Shield'):
             with self.subTest(stat=stat): self.assertEqual('match', rows[stat]['status'], rows[stat])
+        self.assertEqual([], result['items'])
 
 
 if __name__ == '__main__':

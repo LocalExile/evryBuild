@@ -12,5 +12,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <EmbeddedResource Include="compatibility.json" />
+    <EmbeddedResource Include="mod-text.json" LogicalName="mod-text.json" />
   </ItemGroup>
 </Project>

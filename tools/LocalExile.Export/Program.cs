@@ -75,7 +75,8 @@ static class ExportCommand
         var build = PathOfBuilding.Parse(request.Code ?? throw new ArgumentException("No build was supplied."));
         var progress = PathOfBuildingCharacters.Prepare(build, data, () => NativeGraph.Load(data));
         var catalog = new ItemCatalog(data);
-        var equipment = PathOfBuildingItems.Materialize(build, catalog, data);
+        var equipment = PathOfBuildingItems.Materialize(build, catalog, data, (definition, type, item, own) =>
+            ItemSend.Definition(connection, ItemSend.Title(definition.Text), type, item) is { } unique ? ItemSend.Completed(item, type, unique, catalog.Mods, own) : item);
         string save = JsonSerializer.Serialize(progress.ToSave(equipment));
         var compatibility = Compatibility.Check(build, progress, equipment, catalog, data, version);
         var allWarnings = progress.Warnings.Concat(equipment.Warnings).Concat(compatibility.Warnings).Distinct()

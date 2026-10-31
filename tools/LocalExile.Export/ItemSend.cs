@@ -98,14 +98,16 @@ static class ItemSend
     internal sealed record UniqueDefinition(string Name, string BaseTypeId, string[] Mods, byte ItemLevel = 86, bool Corrupted = false);
 
     // The server's catalogue row: PoB's text cannot name most unique modifiers, this row does. Older databases have no such table.
-    static UniqueDefinition? Definition(SqliteConnection connection, string title, ItemCatalog.BaseType type, Item item)
+    internal static UniqueDefinition? Definition(SqliteConnection connection, string title, ItemCatalog.BaseType type, Item item)
     {
         if (item.Rarity != ItemRarity.Unique || item.FracturedCount > 0) return null;
         using var c = connection.CreateCommand();
         c.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='catalog_entries'";
         if (c.ExecuteScalar() is null) return null;
         c.CommandText = "SELECT payload FROM catalog_entries WHERE kind='unique_item' AND key=$key AND enabled=1";
-        c.Parameters.AddWithValue("$key", $"{title}|{type.Id}");
+        // A Foulborn unique is its ordinary unique with mutated modifiers, which stay as parsed.
+        const string foulborn = "Foulborn ";
+        c.Parameters.AddWithValue("$key", $"{(title.StartsWith(foulborn, StringComparison.Ordinal) ? title[foulborn.Length..] : title)}|{type.Id}");
         return c.ExecuteScalar() is string payload ? JsonSerializer.Deserialize<UniqueDefinition>(payload) : null;
     }
 
@@ -227,7 +229,7 @@ static class ItemSend
         return path;
     }
 
-    static string Title(string text) => text.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    internal static string Title(string text) => text.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .SkipWhile(l => !l.StartsWith("Rarity:", StringComparison.Ordinal)).Skip(1).FirstOrDefault() ?? "";
 
     static string Label(string text, ItemCatalog.BaseType type, Item item) =>

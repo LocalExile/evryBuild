@@ -98,11 +98,24 @@ def compare(pob, server):
     return rows
 
 
+def item_differences(pob_items, equipment):
+    """Worn items whose own defences differ, so a defence mismatch can be traced to one piece of gear."""
+    rows = []
+    for item in equipment:
+        expected = pob_items.get(SLOTS.get(item['Row']))
+        if item['Inactive'] or not expected:
+            continue
+        for stat, label in (('Armour', 'armour'), ('Evasion', 'evasion'), ('EnergyShield', 'energy shield')):
+            if abs(expected[stat] - item[stat]) > 1:
+                rows.append(f"{item['Name']}: PoB {expected[stat]:g} {label}, server {item[stat]:g}")
+    return rows
+
+
 def number(value):
     return 'n/a' if value is None else f'{value:g}'
 
 
-def render(rows, skipped, unmatched, identity, show_skipped=False, inactive=()):
+def render(rows, skipped, unmatched, identity, show_skipped=False, inactive=(), items=()):
     counts = {status: sum(r['status'] == status for r in rows) for status in ('match', 'rounding', 'mismatch', 'missing')}
     width = max(len(r['stat']) for r in rows)
     lines = [identity, '', f"{'Stat':<{width}}  {'PoB':>10}  {'Server':>10}  {'Diff':>10}  Status"]
@@ -110,6 +123,8 @@ def render(rows, skipped, unmatched, identity, show_skipped=False, inactive=()):
         difference = '' if r['difference'] is None else f"{r['difference']:+g}"
         lines.append(f"{r['stat']:<{width}}  {number(r['pob']):>10}  {number(r['server']):>10}  {difference:>10}  {'' if r['status'] == 'match' else r['status']}")
     lines += ['', f"{counts['match']} match, {counts['rounding']} rounding, {counts['mismatch']} mismatch, {counts['missing']} missing"]
+    if items:
+        lines += ['', 'These worn items have different defences on each side:'] + [f'  - {row}' for row in items]
     if inactive:
         lines += ['', f'The server treats {len(inactive)} worn item(s) as inactive, so they are left out of both columns above:'] + [f'  - {name}' for name in inactive]
     if skipped:
@@ -122,8 +137,8 @@ def render(rows, skipped, unmatched, identity, show_skipped=False, inactive=()):
     return '\n'.join(lines)
 
 
-def pob_worker(xml_path, progress_path, out_path):
-    """Runs in its own process: PoB prints through the C runtime and changes the working directory."""
+def open_lua():
+    """The bundled LuaJIT runtime, with its libraries on the path. Returns a function that runs Lua source, from the src folder."""
     runtime = ROOT / 'runtime'
     os.add_dll_directory(str(runtime))
     lua = ctypes.CDLL(str(runtime / 'lua51.dll'))
@@ -146,6 +161,12 @@ def pob_worker(xml_path, progress_path, out_path):
 
     os.chdir(ROOT / 'src')
     run("package.path='../runtime/lua/?.lua;../runtime/lua/?/init.lua;'..package.path; package.cpath='../runtime/?.dll;'..package.cpath; arg={}")
+    return run
+
+
+def pob_worker(xml_path, progress_path, out_path):
+    """Runs in its own process: PoB prints through the C runtime and changes the working directory."""
+    run = open_lua()
     run("dofile('HeadlessWrapper.lua')")
     run(f'xmlPath={json.dumps(Path(xml_path).as_posix())}; progressPath={json.dumps(Path(progress_path).as_posix())}; '
         f'outPath={json.dumps(Path(out_path).as_posix())}; keys={json.dumps(json.dumps([s[1] for s in STATS]))}')
@@ -196,6 +217,13 @@ def pob_worker(xml_path, progress_path, out_path):
                 modDB:Sum('BASE',nil,stat,element~='Chaos' and 'ElementalResistMax' or nil))
         end
         values.unmatched=unmatched
+        values.items={}
+        for _,slot in pairs(build.itemsTab.slots) do
+            local item=build.itemsTab.items[slot.selItemId]
+            if item and item.armourData then
+                values.items[slot.slotName]={Armour=item.armourData.Armour or 0,Evasion=item.armourData.Evasion or 0,EnergyShield=item.armourData.EnergyShield or 0}
+            end
+        end
         local out=assert(io.open(outPath,'wb')); out:write(json.encode(values)); out:close()
     ''')
 
@@ -265,7 +293,7 @@ def run(localexile, build, build_probe=True):
     commit = subprocess.run(['git', '-C', str(localexile), 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip() or 'unknown'
     identity = f"{Path(build).stem}: {exported['class']} level {server['Level']}, {server['Passives']} passives, {exported['items']} items, LocalExile {commit}"
     names = [item['Name'] for item in inactive]
-    return dict(identity=identity, rows=compare(pob, server), skipped=skipped_lines(exported['warnings']),
+    return dict(identity=identity, items=item_differences(pob.get('items') or {}, server['Equipment']), rows=compare(pob, server), skipped=skipped_lines(exported['warnings']),
         unmatched=still_counted(pob.get('unmatched') or [], names), inactive=names)
 
 
@@ -281,7 +309,7 @@ def main():
     parser.add_argument('--json', type=Path, help='also write the result here')
     args = parser.parse_args()
     result = run(args.localexile, args.build, not args.no_build)
-    print(render(result['rows'], result['skipped'], result['unmatched'], result['identity'], args.show_skipped, result['inactive']))
+    print(render(result['rows'], result['skipped'], result['unmatched'], result['identity'], args.show_skipped, result['inactive'], result['items']))
     if args.json:
         args.json.write_text(json.dumps(result, indent=2), encoding='utf-8')
     return 0

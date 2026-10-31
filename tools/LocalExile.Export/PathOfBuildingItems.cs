@@ -28,7 +28,10 @@ static class PathOfBuildingItems
         ["Belt"] = 10, ["Weapon 1 Swap"] = 14, ["Weapon 2 Swap"] = 15,
     };
 
-    public static Result Materialize(PathOfBuildingBuild build, ItemCatalog catalog, string folder = "data")
+    /// <param name="finish">Completes a parsed item from outside the build, such as the server's unique catalogue. It gets
+    /// that item's own warnings, to replace any it makes obsolete.</param>
+    public static Result Materialize(PathOfBuildingBuild build, ItemCatalog catalog, string folder = "data",
+        Func<PathOfBuildingItem, ItemCatalog.BaseType, Item, List<string>, Item>? finish = null)
     {
         if (catalog.Error is { } unavailable) throw new ArgumentException(unavailable);
         var errors = new List<string>();
@@ -46,7 +49,10 @@ static class PathOfBuildingItems
                 else if (Regex.Match(slot.Name, @"^Flask ([1-5])$", RegexOptions.IgnoreCase) is { Success: true } flask)
                 { row = PlayerInventories.Flask; x = (byte)(flask.Groups[1].Value[0] - '1'); }
                 else throw new PathOfBuildingUnsupportedException("this equipment slot is not implemented by the server");
-                var (type, item) = ParseItem(definition, catalog, folder, warnings);
+                var own = new List<string>();
+                var (type, item) = ParseItem(definition, catalog, folder, own);
+                if (finish is not null) item = finish(definition, type, item, own);
+                warnings.AddRange(own);
                 if (!PlayerInventories.Accepts(row, type.Class))
                     throw new ArgumentException($"{type.Name} ({type.Class}) cannot be equipped in this slot");
                 if (!equipped.TryAdd(slot.Name, new(row, x, type, item, slot.Name)))
@@ -301,9 +307,13 @@ static class PathOfBuildingItems
                     [.. mod.Stats.Select(s => checked((int)Math.Floor(s.Min + (s.Max - (double)s.Min) * range + 0.5)))]), flags.Contains("fractured")));
                 continue;
             }
+            // Radius and Limited to restate a jewel's modifiers, which the client reads for itself.
             if (field is "Unique ID" or "League" or "Crafted" or "Variant" or "Selected Variant" or "Source" or "Upgrade"
-                or "Requirements" or "Item Class") continue;
-            if (raw is "Shaper Item" or "Elder Item" or "Crusader Item" or "Redeemer Item" or "Hunter Item" or "Warlord Item")
+                or "Requirements" or "Item Class" or "Radius" or "Limited to") continue;
+            if (field == "Intangibility")
+            { warnings.Add($"{type.Name}: skipped Intangibility {value}, which LocalExile does not model."); continue; }
+            if (raw is "Shaper Item" or "Elder Item" or "Crusader Item" or "Redeemer Item" or "Hunter Item" or "Warlord Item"
+                or "Searing Exarch Item" or "Eater of Worlds Item")
             { warnings.Add($"{type.Name}: skipped influence identity '{raw}'; supported modifier effects are retained."); continue; }
             if (field is "Catalyst" or "CatalystQuality")
             { warnings.Add($"{type.Name}: skipped unsupported {field} '{value}'; retained modifiers must still match native values."); continue; }
@@ -312,7 +322,7 @@ static class PathOfBuildingItems
             if (field is "Armour" or "Evasion" or "Energy Shield" or "EnergyShield")
             { defenceDisplay[field.Replace(" ", "")] = Number(value, field, 0, int.MaxValue); continue; }
             if (field is "Ward" or "WardBasePercentile" or "Version" or "Selected Version"
-                or "Cluster Jewel Skill" or "Cluster Jewel Node Count" or "Radius" or "Limited to" or "Unreleased"
+                or "Cluster Jewel Skill" or "Cluster Jewel Node Count" or "Unreleased"
                 || raw.Contains(" Alt Variant", StringComparison.Ordinal) || raw.StartsWith("Selected Variant Group", StringComparison.Ordinal))
                 throw new PathOfBuildingUnsupportedException($"unsupported item property '{raw}'");
 
@@ -326,7 +336,8 @@ static class PathOfBuildingItems
                 rawMods.Add(new("", excludedSection, false, false, false, 1, false));
                 continue;
             }
-            if (tags.Any(t => t is not ("crafted" or "fractured" or "implicit" or "enchant" or "scourge" or "prefix" or "suffix")))
+            if (tags.Any(t => t is not ("crafted" or "fractured" or "implicit" or "enchant" or "scourge" or "prefix" or "suffix"
+                or "exarch" or "eater" or "mutated" or "crucible")))
                 throw new PathOfBuildingUnsupportedException($"unsupported modifier flags in '{raw}'");
             if (rangeValues.Length > 1) throw new ArgumentException($"multiple independent ranges in '{raw}'");
             double lineRange = rangeValues.Length == 0 ? 1 : rangeValues[0];
@@ -338,6 +349,8 @@ static class PathOfBuildingItems
         if (implicitLines > 0) throw new ArgumentException("the Implicits count exceeds the modifier lines");
         var mods = new List<(ItemMod Mod, bool Fractured)>(directMods);
         bool omittedModifiers = false;
+        var unresolved = new List<(ParsedMod Line, string Reason)>();
+        var translated = new List<(ParsedMod Line, ItemMod Mod)>();
         int modIndex = 0;
         // PoB ItemsTab:Load numbers the separate modifier lists, including inactive variant lines.
         foreach (var rawMod in rawMods.OrderBy(m => m.Section switch
@@ -361,10 +374,29 @@ static class PathOfBuildingItems
             var line = rawMod with { Text = Ranges.Replace(rawMod.Text, m => Math.Floor(double.Parse(m.Groups[1].Value, Invariant)
                 + (double.Parse(m.Groups[2].Value, Invariant) - double.Parse(m.Groups[1].Value, Invariant)) * roll + 0.5).ToString(Invariant)) };
             if (line.Derived && directMods.Count > 0) continue; // These lines are generated from the exact Prefix/Suffix ids.
-            try { mods.Add((ResolveMod(line, type, item, catalog), line.Fractured)); }
-            catch (PathOfBuildingUnsupportedException e)
-            { omittedModifiers = true; warnings.Add($"Skipped modifier on {type.Name}: {e.Message}."); }
+            try { translated.Add((line, ResolveMod(line, type, item, catalog))); }
+            catch (PathOfBuildingUnsupportedException e) { unresolved.Add((line, e.Message)); }
         }
+        if (unresolved.Count > 0)
+        {
+            // Translated lines are offered too: one of them can be a line of a hybrid whose other lines are unresolved.
+            var texts = unresolved.Select(u => u.Line).Concat(translated.Select(t => t.Line))
+                .Select(l => new ModText.Line(l.Section, l.Text)).ToArray();
+            var found = ModText.Embedded.Resolve(texts, type, item, catalog.Mods).Where(f => f.Lines.Any(i => i < unresolved.Count)).ToArray();
+            foreach (var match in found)
+            {
+                mods.Add((match.Mod, match.Lines.Any(i => i < unresolved.Count ? unresolved[i].Line.Fractured : translated[i - unresolved.Count].Line.Fractured)));
+                if (match.OutsideRoll)
+                    warnings.Add($"{type.Name}: kept a value beyond the native roll of '{string.Join(", ", match.Lines.Select(i => texts[i].Text))}'.");
+            }
+            var named = found.SelectMany(f => f.Lines).ToHashSet();
+            for (int i = 0; i < unresolved.Count; i++)
+                if (!named.Contains(i)) warnings.Add($"Skipped modifier on {type.Name}: {unresolved[i].Reason}.");
+            translated = [.. translated.Where((_, i) => !named.Contains(i + unresolved.Count))];
+            // The strict checks below compare this client's own numbers with PoB's. Text matches can differ slightly.
+            omittedModifiers = true;
+        }
+        mods.AddRange(translated.Select(t => (t.Mod, t.Line.Fractured)));
         if (!hasImplicitMarker && type.Implicits is { Count: > 0 })
             throw new ArgumentException("the export omits its implicit modifier values; re-save the item in PoB");
         item = item with
@@ -471,6 +503,9 @@ static class PathOfBuildingItems
             List: r.GetProperty("Wordlist").GetInt32(), Row: r)).ToArray();
         if (item.Rarity == ItemRarity.Unique)
         {
+            // A Foulborn unique is its ordinary unique with mutated modifiers, and has no name or art of its own.
+            const string foulborn = "Foulborn ";
+            if (title.StartsWith(foulborn, StringComparison.Ordinal)) title = title[foulborn.Length..];
             var names = words.Where(w => w.List == 6 && w.Text == title).ToArray();
             if (names.Length != 1) throw new PathOfBuildingUnsupportedException($"unique name '{title}' cannot be identified in this client");
             string uniquePath = Path.Combine(folder, "tables", "UniqueStashLayout.json"), visualPath = Path.Combine(folder, "tables", "ItemVisualIdentity.json");
