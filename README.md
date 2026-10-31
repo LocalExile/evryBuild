@@ -61,10 +61,12 @@ See [local packaging and ZIP instructions](RELEASE.md) in the source repository.
 dotnet test tests/LocalExile.Export.Tests
 python tests/evrybuild/test_localexile.py -v
 python tests/evrybuild/test_exporter.py -v
+python tests/evrybuild/test_parity.py -v
 python -m unittest discover -s scripts -p test_package_evrybuild.py -v
 ```
 
 [Validation instructions](tests/evrybuild/README.md) include optional real-data testing.
+The [parity check](docs/Parity.md) compares PoB's numbers for a build with a LocalExile checkout's, with no client running.
 Tests write only temporary databases. Unmodified upstream contract validation is separate from the game-client check.
 On 2026-10-29, the owner confirmed that an externally exported level-99 Witch loaded in unmodified LocalExile
 `b2737133`, with items and gems present and movement working. This verifies native loading of the tested build;

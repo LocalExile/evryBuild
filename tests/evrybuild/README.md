@@ -7,6 +7,7 @@ Run from the evryBuild source root on Windows with .NET 10 SDK, PowerShell and P
 dotnet test tests/LocalExile.Export.Tests
 python tests/evrybuild/test_localexile.py -v
 python tests/evrybuild/test_exporter.py -v
+python tests/evrybuild/test_parity.py -v
 python -m unittest discover -s scripts -p test_package_evrybuild.py -v
 ```
 

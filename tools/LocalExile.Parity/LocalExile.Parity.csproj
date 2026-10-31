@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Developer tool, never packaged. It runs a LocalExile checkout's own stat code on a saved character, so it builds
+       against that checkout: dotnet build -p:LocalExilePath=C:\path\to\LocalExile. The assembly name is the one the
+       Gateway's InternalsVisibleTo trusts; this is the only way to reach that code without changing LocalExile. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>GameServer.Gateway.Tests</AssemblyName>
+    <RootNamespace>LocalExile.Parity</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <Target Name="RequireLocalExilePath" BeforeTargets="ResolveProjectReferences" Condition="'$(LocalExilePath)' == ''">
+    <Error Text="Pass -p:LocalExilePath=&lt;a LocalExile checkout&gt;." />
+  </Target>
+  <ItemGroup Condition="'$(LocalExilePath)' != ''">
+    <ProjectReference Include="$(LocalExilePath)\src\GameServer.Gateway\GameServer.Gateway.csproj" />
+  </ItemGroup>
+</Project>
