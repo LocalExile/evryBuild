@@ -17,6 +17,8 @@ through the actual Windows pipe bridge without a shell.
 The SQLite tests use synthetic game tables and temporary databases for read-only preview,
 atomic creation, account/slot/name checks, duplicate and legacy refusal, failed-save rollback,
 SQLite online backup and retention/reporting of an unknown passive effect.
+Item-send tests simulate the Gateway on a private port through `Game_GATEWAY_PORT`, so a running server cannot affect them.
+They cover the free cell and item id, unknown save fields, the row backup, and refusal while in game or before a restart.
 Packaging checks profile isolation, required helper presence/hash, source freshness and destination guards.
 They also require the current README and database setup guide in the portable output.
 Account-selection tests cover single-account defaults, explicit selection between multiple accounts and case-insensitive names.

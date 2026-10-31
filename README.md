@@ -9,6 +9,9 @@ Choose the local server's SQLite save database, preview the current build, and c
 No LocalExile API, token, listening port, plugin, or source changes are required.
 The exporter runs once locally, then exits; it is included in the portable package.
 
+**Send to LocalExile** in the **Items** tab puts one item into an existing character's inventory,
+or copies the chat commands that make it while you play. See [sending an item](docs/LocalExile.md#send-an-item-to-a-character).
+
 Valid equipment, gems and passives are retained even when their gameplay mechanics are not implemented.
 Preview distinguishes native encoding omissions from implemented, partial, unimplemented and unknown effects.
 Offline compatibility rules belong to this repository; unknown effects are never assumed to work.

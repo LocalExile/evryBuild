@@ -70,6 +70,36 @@ Legacy server URL and token fields are ignored and are removed when preferences 
 If an export loses its response, refresh the character list before trying again.
 The new name is refused on retry if the transaction already committed.
 
+## Send an item to a character
+
+Open or create an item in the **Items** tab so it shows on the right, then click **Send to LocalExile...**.
+The dialog reuses your last database and account, and checks the item and the character as soon as it opens.
+Click **Send** when it says ready, then log in. The item is in the character's main inventory.
+Items, the stash and gold stay in the Gateway's memory from a character's first login until the Gateway stops.
+Logging out or closing the client does not clear them, so the dialog tells you what to do when it matters:
+
+| The dialog says | What to do |
+|---|---|
+| Ready | Click **Send**. |
+| You are in game | Log out to the character screen, then click **Check Again**. |
+| Restart the Gateway first | From the LocalExile folder, run `.\scripts\dev\live.ps1 -Only Gateway -NoBuild`, then click **Check Again**. |
+
+You only need the restart when the character has played since the Gateway started, and it clears that session's
+instances and ground items. The send is refused until it is safe, so no item is written and then overwritten.
+It changes only the character's inventory, keeps the rest of the save, and keeps the previous save as
+`evryBuild-backups/<character>-<time>.save.json`. The database itself is not copied for a send.
+
+**Copy Command** works while you play, with no logout, and needs no character. Paste it into the game's chat.
+A unique is one command, `/item <name>`, which makes the server's own version with its own rolls.
+Anything else is several commands: run the first, pick the new item up on your cursor, then run the rest.
+Click **Copy Command** again for each next line. Commands cannot set quality, item level, a rare's name,
+fractured modifiers or the mirrored state; **Send** keeps those.
+
+Modifiers are matched to the client's data, and a line PoB's text cannot identify is skipped and listed as a warning.
+For a unique, **Send** uses the server's catalogue in the save database for its exact modifiers,
+keeping PoB's roll where the stats match and the top of the roll otherwise.
+Ruthless characters are refused, and a character needs a save first, so log in with it once.
+
 ## Troubleshooting
 
 Report reproducible problems or feature suggestions in the [evryBuild issue tracker](https://github.com/LocalExile/evryBuild/issues).
@@ -130,8 +160,7 @@ For example, the reference implementation supports Frostblink movement but not i
 An ordinary native stat or gem appearing in extracted tables is not proof that its gameplay mechanic is implemented.
 Rules and evidence are maintained in `tools/LocalExile.Export/compatibility.json`; users need no server API to read them.
 
-Unmodified upstream does not store the imported armour-base percentile used by the earlier PoB server branch.
-Armour items are retained, with a warning that the server's base roll will be used.
+Armour items keep their defence base roll. A server older than that save field ignores it and uses its own roll.
 No compensating modifiers or invented stats are added to force PoB totals.
 
 ## Current encoding limits

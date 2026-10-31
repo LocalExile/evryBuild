@@ -89,6 +89,131 @@ function M.Describe(reply)
     if #text>32768 then return text:sub(1,32500).."\nDisplay shortened. Export saves the full compatibility report beside the backup." end
     return text
 end
+local function pickFile(kind,report)
+    local ok,native=pcall(function() return assert(loadfile(GetScriptPath().."/Modules/LocalExileNative.lua"))() end)
+    if not ok then report(native); return end
+    local chosen,err=native.PickFile(kind)
+    if err then report(err); return end
+    return chosen
+end
+function M.DescribeItem(reply)
+    local lines={}
+    if not reply.preview then
+        lines[#lines+1]="Sent: "..display(reply.item).." to "..display(reply.character)
+    else
+        lines[#lines+1]=display(reply.item)..(reply.character and " for "..display(reply.character) or "")
+    end
+    if reply.x then lines[#lines+1]=string.format("Main inventory cell: column %d, row %d",reply.x+1,reply.y+1) end
+    lines[#lines+1]=display(reply.next)
+    if reply.backup then lines[#lines+1]="Previous save: "..display(reply.backup) end
+    if reply.incompleteUnique then lines[#lines+1]="This unique would lose the modifiers listed below. Copy Command makes the complete item." end
+    for _,warning in ipairs(reply.warnings or {}) do lines[#lines+1]="- "..display(warning) end
+    if (reply.warningCount or 0)>#(reply.warnings or {}) then lines[#lines+1]="More warnings were shortened." end
+    if reply.commands and #reply.commands>0 then
+        lines[#lines+1]="Chat commands (work while you play):"
+        for _,command in ipairs(reply.commands) do lines[#lines+1]="  "..display(command) end
+        for _,note in ipairs(reply.commandNotes or {}) do lines[#lines+1]="  "..display(note) end
+    end
+    return table.concat(lines,"\n")
+end
+function M.OpenItem(tab)
+    if not tab.displayItem then return end
+    local itemText=tab.displayItem:BuildRaw()
+    local path=main.userPath.."LocalExile.json"
+    local preferences,warning=M.ReadPreferences(path)
+    local controls={}; local busy=false; local closed=false; local previewKey; local checked; local commands={}; local nextCommand=1
+    local function field(name,label,y,value,width)
+        controls[name.."Label"]=new("LabelControl",{"TOPLEFT",nil,"TOPLEFT"},{20,y+3,0,16},label)
+        controls[name]=new("EditControl",{"TOPLEFT",nil,"TOPLEFT"},{160,y,width or 490,22},value,nil,"%c",32768)
+        controls[name].enabled=function() return not busy end
+    end
+    field("database","Save database",42,preferences.database,395)
+    field("dataFolder","Game data folder",76,preferences.dataFolder,395)
+    field("account","Existing account",110,preferences.account)
+    field("name","Character",144,tab.localExileCharacter or "")
+    controls.results=new("EditControl",{"TOPLEFT",nil,"TOPLEFT"},{20,180,630,325},warning or "Choose saves.db. Game data is detected beside it; Browse if stored elsewhere.",nil,"%z",32768,nil,16)
+    local function result(text) controls.results:SetText(text) end
+    local function fingerprint() return json.encode({trim(controls.database.buf),trim(controls.dataFolder.buf),trim(controls.account.buf),trim(controls.name.buf)}) end
+    local function request(operation,key)
+        return {operation=operation,database=trim(controls.database.buf),dataFolder=trim(controls.dataFolder.buf),account=trim(controls.account.buf),name=trim(controls.name.buf),item=itemText,previewKey=key}
+    end
+    local function check(heading)
+        if busy then return end
+        previewKey=nil; busy=true; result("Checking the item and character...")
+        local sent=fingerprint()
+        M.Request(request("item-preview"),function(reply,err)
+            busy=false; if closed then return end
+            if err then result(err); return end
+            commands=reply.commands or {}; nextCommand=1
+            if not reply.blocked then previewKey=reply.previewKey; checked=sent end
+            result((heading or "")..M.DescribeItem(reply))
+        end)
+    end
+    local function inspect()
+        if busy then return end
+        previewKey=nil; busy=true
+        M.Request({operation="inspect",database=trim(controls.database.buf),dataFolder=trim(controls.dataFolder.buf),account=trim(controls.account.buf)},function(reply,err)
+            busy=false; if closed then return end
+            if err then result(err); return end
+            if reply.dataFolder then controls.dataFolder:SetText(reply.dataFolder) end
+            local accounts=reply.accounts or {}
+            local selected=trim(controls.account.buf):lower()
+            local matched
+            for _,account in ipairs(accounts) do if account:lower()==selected then matched=account; break end end
+            -- A database can belong to several people. Never silently choose its first account.
+            controls.account:SetText(matched or (#accounts==1 and accounts[1]) or "")
+            local characters=reply.characters or {}
+            local wanted=trim(controls.name.buf):lower(); local found; local names={}
+            for _,character in ipairs(characters) do
+                names[#names+1]=display(character.name)
+                if character.name:lower()==wanted then found=character.name end
+            end
+            controls.name:SetText(found or (#characters==1 and characters[1].name) or "")
+            if trim(controls.account.buf)=="" then result("Accounts: "..table.concat(accounts,", ").."\nEnter the account that owns the character."); return end
+            check(trim(controls.name.buf)=="" and "Characters: "..table.concat(names,", ").."\n" or nil)
+        end)
+    end
+    local function browse(kind)
+        if busy then return end
+        local chosen=pickFile(kind,result)
+        if chosen then
+            if kind=="data" then controls.dataFolder:SetText(chosen:match("^(.*)[/\\]"))
+            else controls.database:SetText(chosen); controls.dataFolder:SetText("") end
+            previewKey=nil; inspect()
+        end
+    end
+    local function send()
+        if busy then return end
+        if not previewKey or checked~=fingerprint() then previewKey=nil; result("The destination changed. Click Check Again before sending."); return end
+        M.SavePreferences(path,{database=trim(controls.database.buf),dataFolder=trim(controls.dataFolder.buf),account=trim(controls.account.buf),league=preferences.league})
+        local key=previewKey; previewKey=nil; busy=true; result("Sending the item...")
+        local character=trim(controls.name.buf)
+        M.Request(request("item-send",key),function(reply,err)
+            busy=false; if closed then return end
+            if err then result(err); return end
+            tab.localExileCharacter=character -- On the tab: LoadModule runs this file again for every dialog.
+            result(M.DescribeItem(reply))
+        end)
+    end
+    local function copyCommand()
+        if #commands==0 then return end
+        Copy(commands[nextCommand])
+        nextCommand=nextCommand%#commands+1
+    end
+    controls.databaseBrowse=new("ButtonControl",{"TOPLEFT",nil,"TOPLEFT"},{565,42,85,22},"Browse...",function() browse("database") end)
+    controls.dataBrowse=new("ButtonControl",{"TOPLEFT",nil,"TOPLEFT"},{565,76,85,22},"Browse...",function() browse("data") end)
+    controls.check=new("ButtonControl",{"TOPLEFT",nil,"TOPLEFT"},{20,525,105,26},"Check Again",function() if trim(controls.name.buf)=="" then inspect() else check() end end)
+    controls.send=new("ButtonControl",{"TOPLEFT",nil,"TOPLEFT"},{140,525,130,26},"Send",send)
+    controls.copy=new("ButtonControl",{"TOPLEFT",nil,"TOPLEFT"},{285,525,150,26},"Copy Command",copyCommand)
+    controls.copy.label=function() return #commands>1 and string.format("Copy Command %d/%d",nextCommand,#commands) or "Copy Command" end
+    controls.close=new("ButtonControl",{"TOPLEFT",nil,"TOPLEFT"},{540,525,110,26},"Close",function() if not busy then closed=true; main:ClosePopup() end end)
+    for _,name in ipairs({"check","close","databaseBrowse","dataBrowse"}) do controls[name].enabled=function() return not busy end end
+    controls.send.enabled=function() return not busy and previewKey~=nil end
+    controls.copy.enabled=function() return #commands>0 end
+    local popup=main:OpenPopup(670,570,"evryBuild - Send Item to LocalExile",controls,"check","database","close")
+    if trim(controls.database.buf)~="" then inspect() end
+    return popup
+end
 function M.Open(tab)
     local path=main.userPath.."LocalExile.json"
     local preferences,warning=M.ReadPreferences(path)
@@ -125,10 +250,7 @@ function M.Open(tab)
     end
     local function browse(kind)
         if busy then return end
-        local ok,native=pcall(function() return assert(loadfile(GetScriptPath().."/Modules/LocalExileNative.lua"))() end)
-        if not ok then result(native); return end
-        local chosen,err=native.PickFile(kind)
-        if err then result(err); return end
+        local chosen=pickFile(kind,result)
         if chosen then
             if kind=="data" then controls.dataFolder:SetText(chosen:match("^(.*)[/\\]"))
             else controls.database:SetText(chosen); controls.dataFolder:SetText("") end

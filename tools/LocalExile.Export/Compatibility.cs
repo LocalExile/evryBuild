@@ -54,9 +54,6 @@ static class Compatibility
                 foreach (var mod in item.Mods ?? [])
                     if (catalog.Mods.ById(mod.Id) is { } native)
                         foreach (var stat in native.Stats) Stat($"{label} ({mod.Id})", stat.Id);
-                if (basis?.Components.Contains("Armour") == true)
-                    findings.Add(new(label, "armour base percentile", "not implemented",
-                        "The upstream save contract used by this exporter has no armour-base-roll field. The item is kept using the server's base roll."));
                 foreach (var socket in item.Sockets ?? [])
                     if (socket.Gem is { } gem && catalog.All.FirstOrDefault(t => t.Hash == gem.Type) is { } type && catalog.Gem(type) is { } g)
                     {

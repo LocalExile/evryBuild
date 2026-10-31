@@ -327,6 +327,9 @@ holding Shift will put it in the second.]])
 	self.controls.removeDisplayItem = new("ButtonControl", {"LEFT",self.controls.editDisplayItem,"RIGHT"}, {8, 0, 60, 20}, "Cancel", function()
 		self:SetDisplayItem()
 	end)
+	self.controls.sendDisplayItem = new("ButtonControl", {"LEFT",self.controls.removeDisplayItem,"RIGHT"}, {8, 0, 130, 20}, "Send to LocalExile...", function()
+		LoadModule("Modules/LocalExile").OpenItem(self)
+	end)
 
 	-- Section: Variant(s)
 

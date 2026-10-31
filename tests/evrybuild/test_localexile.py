@@ -93,6 +93,7 @@ class IntegrationTests(unittest.TestCase):
             end
             common = { base64 = {encode=function(value) return 'compressed-code' end} }
             function Deflate(value) return value end
+            function Copy(value) copied = value end
             function GetRuntimePath() return install end
             function GetScriptPath() return sourceRoot end
             launch = {subScripts={}}
@@ -226,6 +227,58 @@ class IntegrationTests(unittest.TestCase):
             launch.subScripts[2].callback('{"ok":true,"character":"NewName","backup":"backup.db"}')
             assert(not c.create.enabled() and c.results.buf:find('Character created: NewName',1,true))
         ''')
+
+    def open_item_dialog(self):
+        self.lua.run('''
+            itemTab = {displayItem = {BuildRaw=function() return 'Rarity: NORMAL\\nIron Ring' end}}
+            M.SavePreferences(userPath..'LocalExile.json', {database='C:/server/data/saves.db',dataFolder='C:/server/data',account='Alice',league='Standard'})
+            M.OpenItem(itemTab); c=main.popup.controls
+            json=require('dkjson')
+            local inspect=json.decode(workers[1].args[3])
+            assert(inspect.operation=='inspect' and inspect.account=='Alice')
+        ''')
+
+    def test_item_dialog_checks_at_once_and_fills_the_only_character(self):
+        self.open_item_dialog()
+        self.lua.run('''
+            launch.subScripts[1].callback('{"ok":true,"accounts":["Alice"],"characters":[{"name":"Witch","level":90,"league":"Standard"}]}')
+            assert(c.name.buf=='Witch')
+            local payload=json.decode(workers[2].args[3])
+            assert(payload.operation=='item-preview' and payload.name=='Witch' and payload.item:find('Iron Ring',1,true))
+            launch.subScripts[2].callback('{"ok":true,"preview":true,"previewKey":"checked","character":"Witch","item":"Iron Ring","x":0,"y":0,"next":"Ready.","commands":["/item Iron Ring"]}')
+            assert(c.send.enabled() and c.results.buf:find('column 1, row 1',1,true))
+            c.send.onClick()
+            payload=json.decode(workers[3].args[3])
+            assert(payload.operation=='item-send' and payload.previewKey=='checked')
+            launch.subScripts[3].callback('{"ok":true,"preview":false,"character":"Witch","item":"Iron Ring","backup":"old.save.json","next":"Log in."}')
+            assert(not c.send.enabled() and c.results.buf:find('Sent: Iron Ring to Witch',1,true) and itemTab.localExileCharacter=='Witch')
+        ''')
+
+    def test_blocked_item_shows_what_to_do_and_keeps_commands_usable(self):
+        self.open_item_dialog()
+        self.lua.run('''
+            launch.subScripts[1].callback('{"ok":true,"accounts":["Alice"],"characters":[{"name":"Witch","level":90,"league":"Standard"}]}')
+            launch.subScripts[2].callback('{"ok":true,"preview":true,"previewKey":"key","blocked":"You are in game.","next":"You are in game.","item":"Iron Ring","commands":["/item Iron Ring","/item_mod clear"]}')
+            assert(not c.send.enabled() and c.copy.enabled() and c.results.buf:find('You are in game.',1,true))
+            assert(c.copy.label()=='Copy Command 1/2'); c.copy.onClick(); assert(copied=='/item Iron Ring')
+            c.copy.onClick(); assert(copied=='/item_mod clear'); assert(c.copy.label()=='Copy Command 1/2')
+        ''')
+
+    def test_changed_destination_needs_another_check_before_sending(self):
+        self.open_item_dialog()
+        self.lua.run('''
+            launch.subScripts[1].callback('{"ok":true,"accounts":["Alice"],"characters":[{"name":"Witch","level":90,"league":"Standard"}]}')
+            launch.subScripts[2].callback('{"ok":true,"preview":true,"previewKey":"key","item":"Iron Ring","commands":[]}')
+            c.name:SetText('SomeoneElse'); c.send.onClick()
+            assert(#workers==2 and not c.send.enabled() and c.results.buf:find('Check Again',1,true))
+        ''')
+
+    def test_item_dialog_needs_a_displayed_item(self):
+        self.lua.run('main.popup=nil; assert(M.OpenItem({})==nil and main.popup==nil and #workers==0)')
+
+    def test_items_tab_offers_send_to_localexile(self):
+        source = (REPOSITORY / 'src/Classes/ItemsTab.lua').read_text(encoding='utf-8-sig')
+        self.assertIn('LoadModule("Modules/LocalExile").OpenItem(self)', source)
 
     def test_legacy_tokens_and_server_urls_are_not_persisted(self):
         self.lua.run('''

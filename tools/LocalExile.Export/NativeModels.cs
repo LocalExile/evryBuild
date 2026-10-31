@@ -44,11 +44,12 @@ static class CharacterSaves
 {
     public sealed record SavedSocket(SocketColour Colour, SavedItem? Gem = null);
     public sealed record SavedMod(string Id, ModSection Section, List<int> Values);
-    // Exact upstream save fields. Defence percentiles are intentionally not invented as unknown JSON fields.
+    // Exact upstream save fields. A server older than DefenceBaseRoll ignores it; a newer one reads a missing value as the minimum.
     public sealed record SavedItem(uint Type, byte ItemLevel = 1, byte Quality = 0, int Charges = 0, ushort StackSize = 1,
         List<SavedSocket>? Sockets = null, List<byte>? Links = null, int GemExperience = 0,
         ItemRarity Rarity = ItemRarity.Normal, bool Identified = true, List<SavedMod>? Mods = null, List<uint>? Name = null,
-        int GemVariant = 0, bool Corrupted = false, byte Fractured = 0, bool Mirrored = false, byte GemFlags = 0, ushort? Visual = null);
+        int GemVariant = 0, bool Corrupted = false, byte Fractured = 0, bool Mirrored = false, byte GemFlags = 0, ushort? Visual = null,
+        byte DefenceBaseRoll = 0);
     public sealed record SavedPlacement(uint Id, byte X, byte Y, SavedItem Item);
     public sealed record Save(Dictionary<byte, List<SavedPlacement>> Inventories, Dictionary<int, string>? SkillBar = null,
         uint? Experience = null, List<ushort>? Passives = null, List<string>? Waypoints = null, List<string>? Visited = null,
@@ -58,7 +59,7 @@ static class CharacterSaves
         item.Links is null ? null : [.. item.Links], item.GemExperience, item.Rarity, item.Identified,
         [.. item.Mods.Select(m => new SavedMod(mods.ByHash(m.Hash)?.Id ?? throw new ArgumentException("Unknown native modifier"), m.Section, [.. m.Values]))],
         [.. item.NameWords], item.GemVariant, item.Corrupted, item.FracturedCount, item.Mirrored, item.GemFlags,
-        item.Rarity == ItemRarity.Unique ? item.VisualIdentity : null);
+        item.Rarity == ItemRarity.Unique ? item.VisualIdentity : null, item.DefenceBaseRoll);
 }
 
 static class ItemModStats

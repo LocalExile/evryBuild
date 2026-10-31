@@ -13,8 +13,8 @@ static class ExportCommand
     internal static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
     internal sealed record Request(string Operation, string Database, string? DataFolder = null, string? Account = null,
-        string? Name = null, string League = "Standard", string? Code = null, string? PreviewKey = null);
-    sealed record Destination(string Id, string Name);
+        string? Name = null, string League = "Standard", string? Code = null, string? PreviewKey = null, string? Item = null);
+    internal sealed record Destination(string Id, string Name);
     public static int Run(TextReader input, TextWriter output)
     {
         try
@@ -48,7 +48,8 @@ static class ExportCommand
 
     static object Execute(Request request)
     {
-        if (request.Operation is not ("inspect" or "preview" or "export")) throw new ArgumentException("Choose inspect, preview or export.");
+        if (request.Operation is not ("inspect" or "preview" or "export" or "item-preview" or "item-send"))
+            throw new ArgumentException("Choose inspect, preview, export, item-preview or item-send.");
         string database = ExistingLocalFile(request.Database);
         using var connection = Open(database, write: false);
         ValidateSchema(connection);
@@ -57,8 +58,11 @@ static class ExportCommand
         var version = Compatibility.Identify(data);
         if (request.Operation == "inspect")
             return new { ok = true, database, dataFolder = data, accounts = accounts.Select(a => a.Name),
+                characters = ItemSend.Characters(connection, accounts, request.Account),
                 leagues = Leagues(connection), serverVersion = version, next = "Select an existing account, a new name and the game's league; then Preview." };
         if (data is null) throw new ArgumentException("Select the LocalExile data folder containing tables and item-types.json.");
+        if (request.Operation.StartsWith("item-", StringComparison.Ordinal))
+            return ItemSend.Execute(request, database, data, connection, accounts, version);
         if (request.Account is null || request.Name is null || !ValidName(request.Name))
             throw new ArgumentException("Select an existing account and a new name: 3-23 ASCII letters, digits, underscores or hyphens.");
         if (string.IsNullOrWhiteSpace(request.League) || request.League.Length > 128 || request.League.Any(char.IsControl))
@@ -140,7 +144,7 @@ static class ExportCommand
         if (new DriveInfo(Path.GetPathRoot(full)!).DriveType == DriveType.Network) throw new ArgumentException("Use a local database, not a network drive.");
         return full;
     }
-    static SqliteConnection Open(string database, bool write)
+    internal static SqliteConnection Open(string database, bool write)
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database,
             Mode = write ? SqliteOpenMode.ReadWrite : SqliteOpenMode.ReadOnly, Pooling = false, DefaultTimeout = 10 }.ToString());
@@ -148,7 +152,7 @@ static class ExportCommand
         if (write) { using var c = connection.CreateCommand(); c.CommandText = "PRAGMA synchronous=FULL"; c.ExecuteNonQuery(); }
         return connection;
     }
-    static void ValidateSchema(SqliteConnection connection)
+    internal static void ValidateSchema(SqliteConnection connection)
     {
         foreach (var (table, required) in new[] { ("accounts", new[] { "id", "name", "account" }),
             ("account_characters", new[] { "id", "account_id", "name", "created_utc", "character" }), ("characters", new[] { "name", "save" }) })
