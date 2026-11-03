@@ -88,7 +88,7 @@ static class ExportCommand
             database, data, account.Id, request.Name, request.League, request.Code, save, version }))));
         object Reply(string? backup) => new { ok = true, preview = request.Operation == "preview", previewKey,
             character = request.Name, @class = build.Class.ToString(), level = build.Level, league = request.League,
-            items, gems, passives = progress.Passives.Count, masteries = progress.MasteryEffects.Count,
+            items, gems, passives = progress.Passives.Count, masteries = progress.MasteryEffects.Count, tattoos = progress.Tattoos?.Count ?? 0,
             skippedItems = Math.Max(0, build.Slots.Count(s => s.ItemId != 0) - items),
             skippedGems = Math.Max(0, build.Skills.Where(s => s.Enabled).Sum(s => s.Gems.Count(g => g.Enabled)) - gems),
             warnings = allWarnings.Take(45).Select(w => w[..Math.Min(w.Length, 240)]), warningCount = allWarnings.Length,
@@ -110,7 +110,7 @@ static class ExportCommand
         using (var report = new FileStream(backup + ".export.json", FileMode.CreateNew, FileAccess.Write))
             JsonSerializer.Serialize(report, new { status = "prepared export; database transaction determines creation",
                 character = request.Name, account = account.Name, league = request.League, serverVersion = version,
-                items, gems, passives = progress.Passives.Count, masteries = progress.MasteryEffects.Count,
+                items, gems, passives = progress.Passives.Count, masteries = progress.MasteryEffects.Count, tattoos = progress.Tattoos?.Count ?? 0,
                 warnings = allWarnings, compatibility = compatibility.Findings }, Json);
         using var transaction = writer.BeginTransaction(deferred: false);
         CheckDestination(writer, account.Id, request.Name, database, data, transaction);

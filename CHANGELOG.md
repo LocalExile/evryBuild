@@ -1,5 +1,9 @@
 # Changelog
 
+## evryBuild external LocalExile integration — 2026-11-03
+
+- Export passive-tree overrides as native tattoos. Supported tattoos, and the keystone granted by Journey Tattoo of Makanui, are mapped by name onto retained passives and checked against the client's target sets, the 50-tattoo cap and the one-per-group limits. Runegrafts, Forbidden/Loyalty/Honoured-notable tattoos, tattoos without a server effect and wrong placements are skipped with explicit warnings; override text is never imported as stats.
+
 ## evryBuild external LocalExile integration — 2026-10-29
 
 - Export the active build directly to an existing local LocalExile SQLite database from **Import/Export Build**.

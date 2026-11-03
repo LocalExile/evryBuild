@@ -1,6 +1,9 @@
 The bounded PoB parser, item conversion, passive validation and native table readers were adapted from
 LocalExile feature/pob-import commit 5394de0a5208bb2407491cf986fab5455714bdc8:
 https://github.com/evrydayjunglist/evryPath/tree/5394de0a5208bb2407491cf986fab5455714bdc8
+The tattoo catalogue, target-set and limit rules (PathOfBuildingTattoos.cs) were adapted from LocalExile main
+commit ec522f1876690c0b203636bf78b508f308365163:
+https://github.com/LocalExile/LocalExile/tree/ec522f1876690c0b203636bf78b508f308365163
 
 This project is an independent offline exporter. It has no project or runtime dependency on LocalExile,
 does not include a game server, and does not distribute extracted game tables or game client files.

@@ -164,8 +164,8 @@ No compensating modifiers or invented stats are added to force PoB totals.
 
 ## Current encoding limits
 
-The converter preserves supported native classes/levels, ordinary passives/masteries, equipment/flasks,
-modifier IDs and rolls, item identities, sockets/links and native gems from the active build sets.
+The converter preserves supported native classes/levels, ordinary passives/masteries, supported tattoos,
+equipment/flasks, modifier IDs and rolls, item identities, sockets/links and native gems from the active build sets.
 Unsupported gameplay effects remain when their native IDs/values are representable.
 Unresolvable modifier descriptions are reported separately as encoding omissions.
 
@@ -177,8 +177,17 @@ of the roll otherwise. A Foulborn unique is treated as its ordinary unique, with
 A line that matches nothing is skipped and reported, and a jewel with a `Cluster Jewel Skill` line is refused.
 The dialog shows the first 45 warnings. The full list is in the `.export.json` report beside the backup.
 
+Passive-tree overrides are exported as native tattoos by name: PoB's override name is the client's tattoo item name
+(or, for Journey Tattoo of Makanui, the keystone it granted), and the server derives the replacement from that name.
+A tattoo is written only when the server would accept it from the item: it has a server effect, its passive was
+retained and matches the tattoo's target set (a small attribute passive, a +30 attribute notable or a keystone), and
+it stays within the 50-tattoo cap and the one-per-group limits. Anything else is skipped with a warning naming the
+tattoo and the passive: Runegrafts, Forbidden, Loyalty and Honoured attribute-notable tattoos, tattoos the server has
+no effect for yet (the passive keeps its ordinary effect) and wrong placements. The override's effect text is never
+read as stats.
+
 The current save adapter creates unascended characters; ascendancy selections/nodes, jewels/cluster expansions,
-passive overrides, unsupported special/disconnected nodes, bandit/Pantheon rewards and item-granted skill groups
+unsupported special/disconnected nodes, bandit/Pantheon rewards and item-granted skill groups
 may be omitted because this exporter cannot yet encode them in the upstream character contract.
 Unavailable native bases, identities or gem records are omitted with explicit warnings.
 Unavailable gems leave empty sockets without shifting retained gems or changing links.

@@ -81,7 +81,8 @@ def saved_progress(database, warnings):
         save = json.loads(connection.execute('SELECT save FROM characters WHERE name=?', (CHARACTER,)).fetchone()[0])
     finally:
         connection.close()
-    return dict(passives=save.get('Passives') or [], masteries=save.get('MasteryEffects') or {}, skipped=skipped_lines(warnings))
+    return dict(passives=save.get('Passives') or [], masteries=save.get('MasteryEffects') or {},
+                tattoos=save.get('Tattoos') or {}, tattooKeystones=save.get('TattooKeystones') or {}, skipped=skipped_lines(warnings))
 
 
 def compare(pob, server):
@@ -174,11 +175,18 @@ def pob_worker(xml_path, progress_path, out_path):
         local json=require('dkjson')
         local function read(path) local file=assert(io.open(path,'rb')); local text=file:read('*a'); file:close(); return text end
         loadBuildFromXML(read(xmlPath))
-        -- PoB calculates the tree the save holds, not the build's: clusters, tattoos and special nodes were not exported.
+        -- PoB calculates the tree the save holds, not the build's: clusters, special nodes and skipped tattoos were not
+        -- exported. A saved tattoo is PoB's override by item name; Journey Tattoo of Makanui by the keystone it granted.
         local progress=json.decode(read(progressPath))
         local masteries={}
         for node,effect in pairs(progress.masteries) do masteries[tonumber(node)]=effect end
-        build.spec:ImportFromNodeList(nil,build.spec.curClassId,0,0,progress.passives,{},masteries)
+        local overrides={}
+        for node,name in pairs(progress.tattoos) do
+            local keystone=progress.tattooKeystones[node] and build.spec.nodes[tonumber(progress.tattooKeystones[node])]
+            local data=build.spec.tree.tattoo.nodes[keystone and keystone.dn or name]
+            if data then overrides[tonumber(node)]=copyTable(data,true); overrides[tonumber(node)].id=tonumber(node) end
+        end
+        build.spec:ImportFromNodeList(nil,build.spec.curClassId,0,0,progress.passives,overrides,masteries)
         -- PoB also drops the lines the exporter could not write. Lines match by base and wording: rolls and catalysts
         -- change the numbers, which the two programs can also round differently.
         local function wording(line) return (line:gsub('%(%-?%d+%.?%d*%-%-?%d+%.?%d*%)','#'):gsub('%-?%d+%.?%d*','#')) end

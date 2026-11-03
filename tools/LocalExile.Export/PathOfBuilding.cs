@@ -17,8 +17,14 @@ public sealed record PathOfBuildingBuild(CharacterClass Class, int Level, PathOf
     string? Bandit = null, string? PantheonMajor = null, string? PantheonMinor = null);
 public sealed record PathOfBuildingTree(int ClassId, int AscendancyId, string? Version, IReadOnlyList<uint> Nodes,
     IReadOnlyDictionary<ushort, ushort> Masteries, IReadOnlyList<PathOfBuildingJewelSocket> Jewels,
-    bool HasOverrides, int SecondaryAscendancyId = 0);
+    IReadOnlyList<PathOfBuildingOverride> Overrides, int SecondaryAscendancyId = 0)
+{
+    public bool HasOverrides => Overrides.Count > 0;
+}
 public sealed record PathOfBuildingJewelSocket(uint NodeId, int ItemId);
+/// <summary>A passive-tree override (a tattoo or Runegraft on a node): PoB's display name (dn) and its effect lines.
+/// The lines are PoB's own text and are never read as stats; the native mapping goes by name.</summary>
+public sealed record PathOfBuildingOverride(uint NodeId, string Name, IReadOnlyList<string> Lines);
 public sealed record PathOfBuildingItem(int Id, string Text, int? Variant, bool HasAlternateVariants = false,
     bool HasLegacyModRanges = false)
 {
@@ -193,9 +199,18 @@ public static class PathOfBuilding
         }
         if (jewels.Select(j => j.NodeId).Distinct().Count() != jewels.Count)
             throw Error("The selected tree contains duplicate jewel sockets.");
+        // PassiveSpec:Save writes one Override per tattooed node: nodeId, dn, icon, activeEffectImage and the effect lines as text.
+        var overrides = new List<PathOfBuildingOverride>();
+        foreach (var element in Single(spec, "Overrides")?.Elements("Override") ?? [])
+        {
+            uint node = Unsigned(Required(element, "nodeId"), "passive override");
+            var lines = element.Value.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).ToList();
+            overrides.Add(new(node, Optional(element, "dn") ?? "", ReadOnly(lines)));
+        }
+        if (overrides.Select(o => o.NodeId).Distinct().Count() != overrides.Count)
+            throw Error("The selected tree contains duplicate passive overrides.");
         return new(classId, ascendancy, Optional(spec, "treeVersion"), ReadOnly(nodes),
-            new ReadOnlyDictionary<ushort, ushort>(masteries), ReadOnly(jewels),
-            Single(spec, "Overrides")?.HasElements == true, secondary);
+            new ReadOnlyDictionary<ushort, ushort>(masteries), ReadOnly(jewels), ReadOnly(overrides), secondary);
     }
 
     // Legacy official tree URLs, as emitted by PassiveSpec:EncodeURL. Integers are big-endian.

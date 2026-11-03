@@ -6,11 +6,13 @@ using GameServer.Core.Imports;
 static class PathOfBuildingCharacters
 {
     public sealed record Progress(CharacterClass Class, int Level, uint Experience, List<ushort> Passives,
-        Dictionary<ushort, ushort> MasteryEffects, ushort ExtraPassivePoints, IReadOnlyList<string> Warnings)
+        Dictionary<ushort, ushort> MasteryEffects, ushort ExtraPassivePoints, IReadOnlyList<string> Warnings,
+        Dictionary<ushort, string>? Tattoos = null, Dictionary<ushort, ushort>? TattooKeystones = null)
     {
         public CharacterSaves.Save ToSave(PathOfBuildingItems.Result items) => new(items.Inventories,
             SkillBar: items.SkillBar, Experience: Experience, Passives: Passives, MasteryEffects: MasteryEffects,
-            ExtraPassivePoints: ExtraPassivePoints, Waypoints: [Town], Visited: [Town]);
+            ExtraPassivePoints: ExtraPassivePoints, Waypoints: [Town], Visited: [Town],
+            Tattoos: Tattoos is { Count: > 0 } ? Tattoos : null, TattooKeystones: TattooKeystones is { Count: > 0 } ? TattooKeystones : null);
     }
 
     const string Town = "1_1_town";
@@ -31,8 +33,6 @@ static class PathOfBuildingCharacters
             warnings.Add($"Skipped ascendancy selection '{build.Ascendancy ?? tree.AscendancyId.ToString()}' and secondary ascendancy; the character will be unascended.");
         if (tree.Jewels.Count > 0)
             warnings.Add($"Skipped {tree.Jewels.Count} passive-tree jewel(s), including their modifiers and cluster expansions.");
-        if (tree.HasOverrides)
-            warnings.Add("Skipped passive-tree overrides; retained nodes use this client's ordinary passive effects.");
         foreach (var (label, value) in new[] { ("bandit reward", build.Bandit),
             ("major Pantheon", build.PantheonMajor), ("minor Pantheon", build.PantheonMinor) })
             if (NonDefault(value)) warnings.Add($"Skipped unsupported {label} '{value}'.");
@@ -125,6 +125,8 @@ static class PathOfBuildingCharacters
             passives.RemoveAll(id => !connected.Contains(id));
             foreach (ushort id in masteries.Keys.Where(id => !connected.Contains(id)).ToArray()) masteries.Remove(id);
         }
+        // Tattoos go on retained passives only, so they are mapped after the tree is pruned. They cost no points.
+        var tattoos = PathOfBuildingTattoos.Prepare(tree.Overrides, passives, passiveTree, passiveData.RootElement, folder, warnings);
 
         int requiredQuestPoints = Math.Max(0, passives.Count - (build.Level - 1) - passiveTree.PointsGranted(passives));
         if (requiredQuestPoints > 24)
@@ -132,7 +134,8 @@ static class PathOfBuildingCharacters
         if (requiredQuestPoints > 0)
             warnings.Add($"Imported {requiredQuestPoints} extra passive point(s) needed by the selected tree; campaign quests were not completed.");
         warnings.Add("The character starts in Lioneye's Watch. PoB calculations, configuration, quest progress and unsupported gameplay mechanics are not imported.");
-        return new(build.Class, build.Level, xp.Value, passives, masteries, (ushort)requiredQuestPoints, warnings);
+        return new(build.Class, build.Level, xp.Value, passives, masteries, (ushort)requiredQuestPoints, warnings,
+            tattoos.Tattoos, tattoos.Keystones);
     }
 
     static JsonDocument ReadTable(string folder, string table)
