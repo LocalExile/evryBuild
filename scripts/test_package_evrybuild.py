@@ -224,7 +224,7 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(self.target.exists())
 
 
-TAG = "v1.1.0"
+TAG = "evrybuild-v1.1.0"
 
 
 class ReleasePackageTests(PackageTests):
@@ -306,10 +306,13 @@ class ReleasePackageTests(PackageTests):
         self.assertFalse(self.target.exists())
 
     def test_release_tags_and_options_are_checked(self):
-        for tag in ("1.1.0", "v1.1", "v01.1.0", "V1.1.0", "v1.1.0-", "v1.1.0+build", "evrybuild-localexile-external-2026.11.10"):
+        for tag in ("1.1.0", "v1.1.0", "evrybuild-1.1.0", "evrybuild-v1.1", "evrybuild-v01.1.0", "Evrybuild-v1.1.0",
+                    "evrybuild-v1.1.0-", "evrybuild-v1.1.0+build", "evrybuild-localexile-external-2026.11.10"):
             with self.assertRaisesRegex(package_module.PackageError, "Release tags"):
                 package_module.parse_release(tag, None)
-        self.assertEqual("1.3.0-rc.1", package_module.parse_release("v1.3.0-rc.1", None).label)
+        self.assertEqual("1.3.0-rc.1", package_module.parse_release("evrybuild-v1.3.0-rc.1", None).label)
+        with self.assertRaisesRegex(package_module.PackageError, "belong to upstream PoB"):
+            package_module.parse_release("v1.1.0", None)
         with self.assertRaisesRegex(package_module.PackageError, "needs --release-tag"):
             package_module.parse_release(None, "http://127.0.0.1:1/")
         with self.assertRaisesRegex(package_module.PackageError, "ending in /"):
@@ -318,8 +321,8 @@ class ReleasePackageTests(PackageTests):
             package_module.package(self.source, self.target, None, self.folder / "assets")
 
     def test_tag_version_and_changelog_must_agree(self):
-        with self.assertRaisesRegex(package_module.PackageError, "does not match VERSION 1.1.0"):
-            package_module.package(self.source, self.target, package_module.parse_release("v1.2.0", None))
+        with self.assertRaisesRegex(package_module.PackageError, "does not match VERSION 1.1.0.*evrybuild-v1.1.0"):
+            package_module.package(self.source, self.target, package_module.parse_release("evrybuild-v1.2.0", None))
         changelog = self.source / "CHANGELOG.md"
         for text, message in (("# Changelog\n\n## 1.0.0 - 2026-11-04\n", "must be headed '## 1.1.0"),
                               ("# Changelog\n\n## 1.1.0-rc.1 - 2026-11-09\n", "must be headed '## 1.1.0"),
@@ -333,7 +336,7 @@ class ReleasePackageTests(PackageTests):
     def test_an_uncommitted_version_is_refused(self):
         (self.source / "VERSION").write_text("1.2.0\n")
         with self.assertRaisesRegex(package_module.PackageError, "clean commit"):
-            package_module.package(self.source, self.target, package_module.parse_release("v1.2.0", None))
+            package_module.package(self.source, self.target, package_module.parse_release("evrybuild-v1.2.0", None))
 
 
 if __name__ == "__main__":

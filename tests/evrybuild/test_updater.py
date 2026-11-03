@@ -22,7 +22,7 @@ spec = importlib.util.spec_from_file_location("evrybuild_lua_harness", Path(__fi
 harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harness)
 
-TAG = "v1.1.0"
+TAG = "evrybuild-v1.1.0"
 COMMIT = "c0ffee"
 
 

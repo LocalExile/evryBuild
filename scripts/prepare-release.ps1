@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 Prepares every file an evryBuild release attaches, from the current clean commit.
-The tag defaults to v and the VERSION file (VERSION 1.2.0 releases as v1.2.0).
+The tag defaults to evrybuild-v and the VERSION file (VERSION 1.2.0 releases as evrybuild-v1.2.0).
 
 .DESCRIPTION
 Builds a self-updating portable package for the tag, zips it with its SHA-256, and collects the update files the
@@ -18,7 +18,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-if (-not $Tag) { $Tag = 'v' + (Get-Content -Raw -LiteralPath (Join-Path $repo 'VERSION')).Trim() }
+if (-not $Tag) { $Tag = 'evrybuild-v' + (Get-Content -Raw -LiteralPath (Join-Path $repo 'VERSION')).Trim() }
 $root = Join-Path $repo ("dist\release-" + $Tag + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $root | Out-Null
 $app = Join-Path $root 'evryBuild'
