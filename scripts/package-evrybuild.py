@@ -5,6 +5,10 @@ Run from the repository root:
 
 The checked-in compiled runtime is reused; this command does not download software, rebuild the native launcher,
 or read another PoB installation. Current fork source is copied, including uncommitted Lua changes.
+
+A release package (--release-tag) is different: it must be built from a clean commit, copies each file exactly as git
+stores it (what GitHub serves for that commit), and writes a manifest that lets the portable application update
+itself from later releases. --assets collects the files that release must attach.
 """
 from __future__ import annotations
 
@@ -13,10 +17,12 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from typing import NamedTuple
 import xml.etree.ElementTree as ET
 
 
@@ -36,8 +42,51 @@ REQUIRED_OUTPUTS = {EXE, "Launch.lua", "GameVersions.lua", "Modules/Main.lua", "
                     "docs/images/localexile-export.png", "docs/images/localexile-export-dialog.png"}
 
 
+REPOSITORY_NAME = "LocalExile/evryBuild"
+TAG_PREFIX = "evrybuild-localexile-external-"
+UPDATE_ASSET = "evryBuild-update.xml"
+EXPORTER_OUTPUT = "LocalExile/evryBuild.Export.exe"
+EXPORTER_ASSET = "evryBuild.Export.exe"
+PACKAGE_RECORD = "evryBuild-package.json"
+
+
 class PackageError(Exception):
     pass
+
+
+class Release(NamedTuple):
+    """Where a release package updates from. A test server stands in for GitHub with --update-base."""
+    tag: str
+    update_base: str | None = None
+
+    @property
+    def label(self) -> str:
+        return self.tag[len(TAG_PREFIX):]
+
+    def update_url(self) -> str:
+        base = self.update_base or f"https://github.com/{REPOSITORY_NAME}/"
+        return f"{base}releases/latest/download/{UPDATE_ASSET}"
+
+    def repo_url(self, commit: str) -> str:
+        if self.update_base:
+            return f"{self.update_base}raw/{commit}/"
+        return f"https://raw.githubusercontent.com/{REPOSITORY_NAME}/{commit}/"
+
+    def asset_url(self) -> str:
+        base = self.update_base or f"https://github.com/{REPOSITORY_NAME}/"
+        return f"{base}releases/download/{self.tag}/"
+
+
+def parse_release(tag: str | None, update_base: str | None) -> Release | None:
+    if tag is None:
+        if update_base:
+            raise PackageError("--update-base needs --release-tag.")
+        return None
+    if not re.fullmatch(re.escape(TAG_PREFIX) + r"\d{4}\.\d{2}\.\d{2}(\.\d+)?", tag):
+        raise PackageError(f"Release tags look like {TAG_PREFIX}2026.11.10 (optionally .2, .3 for a second release that day).")
+    if update_base is not None and not re.fullmatch(r"https?://[^/\s]+/(?:[^\s\"]*/)?", update_base):
+        raise PackageError("--update-base must be an http(s) URL ending in /.")
+    return Release(tag, update_base)
 
 
 def relative_path(value: str) -> PurePosixPath:
@@ -146,6 +195,48 @@ def application_files(source: Path) -> tuple[str, dict[Path, Path]]:
     return version.get("number"), files
 
 
+def release_notes(source: Path) -> str:
+    """The newest CHANGELOG.md section: what the update popup shows."""
+    changelog = source / "CHANGELOG.md"
+    if not changelog.is_file():
+        return ""
+    section: list[str] = []
+    for line in changelog.read_text(encoding="utf-8-sig").splitlines():
+        if line.startswith("## "):
+            if section:
+                break
+            section.append(line)
+        elif section:
+            section.append(line)
+    return "\n".join(section).strip()
+
+
+def git(source: Path, *args: str, data: bytes | None = None) -> bytes:
+    try:
+        return subprocess.run(["git", "-C", str(source), *args], input=data, capture_output=True, check=True, timeout=300).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        raise PackageError(f"git {args[0]} failed; release packages need the git checkout.") from error
+
+
+def committed_files(source: Path, paths: list[str]) -> tuple[str, dict[str, bytes]]:
+    """The checkout's commit and each path's bytes as git stores them, which is what GitHub serves for it."""
+    if git(source, "status", "--porcelain", "--untracked-files=no").strip():
+        raise PackageError("Release packages are built from a clean commit; commit or discard the changes first.")
+    commit = git(source, "rev-parse", "HEAD").decode().strip()
+    output = git(source, "cat-file", "--batch", data="".join(f"{commit}:{p}\n" for p in paths).encode())
+    blobs: dict[str, bytes] = {}
+    position = 0
+    for path in paths:
+        end = output.index(b"\n", position)
+        header = output[position:end].decode()
+        if header.endswith(" missing") or len(header.split()) != 3:
+            raise PackageError(f"{path} is not committed; release packages contain only committed files.")
+        size = int(header.split()[2])
+        blobs[path] = output[end + 1:end + 1 + size]
+        position = end + 1 + size + 1
+    return commit, blobs
+
+
 def source_revision(source: Path) -> str | None:
     try:
         result = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True,
@@ -163,7 +254,7 @@ def clean_stage(stage: Path, parent: Path) -> None:
     shutil.rmtree(resolved)
 
 
-def package(source_root: Path, destination: Path) -> dict:
+def package(source_root: Path, destination: Path, release: Release | None = None, assets: Path | None = None) -> dict:
     source = source_root.expanduser().resolve()
     target = destination.expanduser().resolve()
     if not source.is_dir():
@@ -175,6 +266,16 @@ def package(source_root: Path, destination: Path) -> dict:
     if not target.parent.is_dir():
         raise PackageError("The destination's parent folder must already exist.")
     version, files = application_files(source)
+    if assets is not None:
+        if release is None:
+            raise PackageError("--assets is for release packages; add --release-tag.")
+        assets = assets.expanduser().resolve()
+        if assets.exists() or not assets.parent.is_dir():
+            raise PackageError("--assets must name a new folder whose parent exists.")
+    # Every application file is committed except the exporter, which is built and attached to the release.
+    repository_paths = {relative: input_path.relative_to(source).as_posix() for relative, input_path in files.items()
+                        if relative.as_posix() != EXPORTER_OUTPUT}
+    commit, blobs = committed_files(source, sorted(repository_paths.values())) if release else (None, {})
     stage = Path(tempfile.mkdtemp(prefix=".evrybuild-package-", dir=target.parent)).resolve()
     published = False
     try:
@@ -182,24 +283,58 @@ def package(source_root: Path, destination: Path) -> dict:
         for relative, input_path in files.items():
             output = stage / relative
             output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(input_path, output)
+            if release and relative in repository_paths:
+                output.write_bytes(blobs[repository_paths[relative]])
+            else:
+                shutil.copy2(input_path, output)
             hashes[relative.as_posix()] = hashlib.sha256(output.read_bytes()).hexdigest()
         (stage / "Builds").mkdir()
-        release = ET.Element("PoBVersion")
-        ET.SubElement(release, "Version", number=version, branch="evrybuild", platform="win32")
-        ET.ElementTree(release).write(stage / "manifest.xml", encoding="utf-8", xml_declaration=True)
         (stage / "evryBuild.cmd").write_bytes(
             b'@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\nstart "" "%~dp0evryBuild.exe" "%~dp0Launch.lua"\r\n')
-        record = {"application": BRAND, "upstreamVersion": version, "sourceRevision": source_revision(source),
+        record = {"application": BRAND, "upstreamVersion": version,
+                  "sourceRevision": commit if release else source_revision(source),
                   "executable": EXE, "portableUserData": True, "filesSha256": hashes}
-        (stage / "evryBuild-package.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        if release:
+            record.update(release=release.label, tag=release.tag)
+        (stage / PACKAGE_RECORD).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        manifest = ET.Element("PoBVersion")
+        version_element = ET.SubElement(manifest, "Version", number=version, branch="evrybuild", platform="win32")
+        if release:
+            version_element.set("release", release.label)
+            version_element.set("tag", release.tag)
+            version_element.set("commit", commit)
+            ET.SubElement(manifest, "Update", url=release.update_url())
+            ET.SubElement(manifest, "Source", part="repo", url=release.repo_url(commit))
+            ET.SubElement(manifest, "Source", part="asset", url=release.asset_url())
+            ET.SubElement(manifest, "Notes").text = release_notes(source)
+            managed = {relative.as_posix(): ("repo", repository_paths[relative]) for relative in repository_paths}
+            managed[EXPORTER_OUTPUT] = ("asset", EXPORTER_ASSET)
+            managed[PACKAGE_RECORD] = ("asset", PACKAGE_RECORD)
+            for name in sorted(managed, key=str.casefold):
+                part, origin = managed[name]
+                content = (stage / name).read_bytes()
+                entry = ET.SubElement(manifest, "File", name=name, part=part, source=origin,
+                                      sha256=hashlib.sha256(content).hexdigest(), size=str(len(content)))
+                if "/" not in name and name.lower().endswith((".dll", ".exe")):
+                    # Loaded by the running application: installing it needs a new process.
+                    entry.set("native", "true")
+        ET.ElementTree(manifest).write(stage / "manifest.xml", encoding="utf-8", xml_declaration=True)
         if target.exists():
             raise PackageError("The destination appeared while packaging; it was not overwritten.")
         os.rename(stage, target)
         published = True
-        return {"ok": True, "application": BRAND, "destination": str(target),
-                "executablePath": str(target / EXE), "copiedApplicationFiles": len(files),
-                "sourceRevision": record["sourceRevision"]}
+        result = {"ok": True, "application": BRAND, "destination": str(target),
+                  "executablePath": str(target / EXE), "copiedApplicationFiles": len(files),
+                  "sourceRevision": record["sourceRevision"]}
+        if release:
+            result.update(release=release.label, tag=release.tag)
+        if assets is not None:
+            assets.mkdir()
+            shutil.copy2(target / "manifest.xml", assets / UPDATE_ASSET)
+            shutil.copy2(target / EXPORTER_OUTPUT, assets / EXPORTER_ASSET)
+            shutil.copy2(target / PACKAGE_RECORD, assets / PACKAGE_RECORD)
+            result["assets"] = str(assets)
+        return result
     finally:
         if not published and stage.exists():
             clean_stage(stage, target.parent)
@@ -209,9 +344,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", required=True, type=Path, help="New portable application folder")
     parser.add_argument("--source-root", type=Path, default=REPOSITORY, help="evryBuild checkout (default: this repository)")
+    parser.add_argument("--release-tag", help=f"Build a self-updating release package for this tag ({TAG_PREFIX}YYYY.MM.DD)")
+    parser.add_argument("--assets", type=Path, help="New folder for the files the release must attach")
+    parser.add_argument("--update-base", help="Test only: serve updates from this URL instead of GitHub")
     args = parser.parse_args(argv)
     try:
-        print(json.dumps(package(args.source_root, args.destination), indent=2))
+        release = parse_release(args.release_tag, args.update_base)
+        print(json.dumps(package(args.source_root, args.destination, release, args.assets), indent=2))
         return 0
     except (PackageError, OSError, ValueError) as error:
         print(json.dumps({"ok": False, "error": str(error)}, indent=2), file=sys.stderr)

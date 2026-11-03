@@ -22,7 +22,7 @@ collectgarbage("setpause", 400)
 
 function launch:OnInit()
 	self.devMode = false
-	-- evryBuild is updated from its fork rather than the upstream PoB updater.
+	-- evryBuild updates only from its own releases (UpdateCheck), never from the upstream PoB updater.
 	self.evryBuildEdition = true
 	self.installedMode = false
 	self.versionNumber = "?"
@@ -31,22 +31,9 @@ function launch:OnInit()
 	self.lastUpdateCheck = GetTime()
 	self.subScripts = { }
 	self.startTime = startTime
-	local firstRunFile = io.open("first.run", "r")
-	if firstRunFile then
-		firstRunFile:close()
-		os.remove("first.run")
-		-- This is a fresh installation
-		-- Perform an immediate update to download the latest version
-		ConClear()
-		ConPrintf("Please wait while we complete installation...\n")
-		local updateMode, errMsg = LoadModule("UpdateCheck")
-		if not updateMode then
-			self.updateErrMsg = errMsg
-		elseif updateMode ~= "none" then
-			self:ApplyUpdate(updateMode)
-			return
-		end
-	end
+	-- Upstream's first-run installer downloads PoB; a portable evryBuild is complete as extracted.
+	os.remove("first.run")
+	local firstRunFile = nil
 	local xml = require("xml")
 	local localManXML = xml.LoadXMLFile("manifest.xml") or xml.LoadXMLFile("../manifest.xml")
 	if localManXML and localManXML[1].elem == "PoBVersion" then
@@ -56,9 +43,17 @@ function launch:OnInit()
 					self.versionNumber = node.attrib.number
 					self.versionBranch = node.attrib.branch
 					self.versionPlatform = node.attrib.platform
+					self.versionRelease = node.attrib.release
+				elseif node.elem == "Update" then
+					-- Only a release package names an update source; copies built from source never check.
+					self.updateSource = node.attrib.url
 				end
 			end
 		end
+	end
+	if self.updateSource then
+		-- Remove the files the last update replaced, now that nothing holds them.
+		PLoadModule("UpdateApply", nil, true)
 	end
 	if localManXML and not self.versionBranch and not self.versionPlatform then
 		-- Looks like a remote manifest, so we're probably running from a repository
@@ -85,10 +80,15 @@ function launch:OnInit()
 		end
 	end
 
-	if not self.devMode and not firstRunFile then
+	if not self.devMode and not firstRunFile and self:UpdateChecksEnabled() then
 		-- Run a background update check if developer mode is off
 		self:CheckForUpdate(true)
 	end
+end
+
+-- Whether to look for a release at start and every 12 hours (Options: "Check for updates at startup").
+function launch:UpdateChecksEnabled()
+	return self.updateSource ~= nil and not (self.main and self.main.checkForUpdates == false)
 end
 
 function launch:CanExit()
@@ -138,7 +138,7 @@ function launch:OnFrame()
 		DrawString(0, screenH/2, "CENTER", 24, "FIXED", self.doRestart)
 		Restart()
 	end
-	if not self.devMode and (GetTime() - self.lastUpdateCheck) > 1000*60*60*12 then
+	if not self.devMode and self:UpdateChecksEnabled() and (GetTime() - self.lastUpdateCheck) > 1000*60*60*12 then
 		-- Do an update check every 12 hours if the user keeps the program open
 		self:CheckForUpdate(true)
 	end
@@ -213,7 +213,10 @@ end
 
 function launch:OnSubError(id, errMsg)
 	if self.subScripts[id].type == "UPDATE" then
-		self:ShowErrMsg("In update thread: %s", errMsg)
+		ConPrintf("Update error: %s", tostring(errMsg))
+		if not (self.subScripts[id].background and self.subScripts[id].mode == "check") then
+			self.updateErrMsg = tostring(errMsg)
+		end
 		self.updateCheckRunning = false
 	elseif self.subScripts[id].type == "DOWNLOAD" then
 		local errMsg = PCall(self.subScripts[id].callback, nil, errMsg)
@@ -226,10 +229,23 @@ end
 
 function launch:OnSubFinished(id, ...)
 	if self.subScripts[id].type == "UPDATE" then
-		self.updateAvailable, self.updateErrMsg = ...
+		local sub = self.subScripts[id]
+		local status, a, b, c = ...
 		self.updateCheckRunning = false
-		if self.updateCheckBackground and self.updateAvailable == "none" then
-			self.updateAvailable = nil
+		if sub.mode == "check" then
+			if status == "available" then
+				self.updateAvailable = { release = a, files = tonumber(b) or 0, bytes = tonumber(c) or 0 }
+			elseif status == "none" then
+				self.updateAvailable = not sub.background and "none" or nil
+			else
+				ConPrintf("Update check failed: %s", tostring(a))
+				-- An offline start should not raise an error; a check the user asked for reports it.
+				if not sub.background then self.updateErrMsg = tostring(a) end
+			end
+		elseif status == "ready" then
+			self:ApplyUpdate(a == "native")
+		else
+			self.updateErrMsg = tostring(a)
 		end
 	elseif self.subScripts[id].type == "DOWNLOAD" then
 		local errMsg = PCall(self.subScripts[id].callback, ...)
@@ -264,10 +280,59 @@ function launch:DownloadPage(url, callback, params)
 	if callback then callback(nil, "External downloads are not available in evryBuild. Use a local build code or the local database exporter.") end
 end
 
-function launch:ApplyUpdate() end
+-- Starts UpdateCheck in the background: "check" compares with the latest release, "download" stages its files.
+function launch:RunUpdateScript(mode, background)
+	if self.updateCheckRunning or not self.updateSource or self.devMode then
+		return
+	end
+	local file = io.open((GetScriptPath() or ".") .. "/UpdateCheck.lua", "r")
+	if not file then
+		self.updateErrMsg = "UpdateCheck.lua is missing."
+		return
+	end
+	local script = file:read("*a")
+	file:close()
+	self.updateProgress = mode == "check" and "Checking..." or "Downloading..."
+	local id = LaunchSubScript(script, "GetScriptPath,GetRuntimePath,GetWorkDir,MakeDir", "ConPrintf,UpdateProgress",
+		mode, self.connectionProtocol)
+	if id then
+		self.subScripts[id] = { type = "UPDATE", mode = mode, background = background }
+		self.updateCheckRunning = true
+	end
+end
 
-function launch:CheckForUpdate()
+function launch:CheckForUpdate(inBackground)
+	if not self.updateSource or self.devMode then
+		return
+	end
 	self.lastUpdateCheck = GetTime()
+	self:RunUpdateScript("check", inBackground)
+end
+
+-- Downloads the release found by the last check; ApplyUpdate follows when every file arrived intact.
+function launch:DownloadUpdate()
+	if type(self.updateAvailable) == "table" then
+		self:RunUpdateScript("download", false)
+	end
+end
+
+-- Installs the staged files. Lua and data changes need only a restart of the scripts; a new exe or DLL needs a
+-- new process, so this one starts evryBuild again and exits.
+function launch:ApplyUpdate(native)
+	local errMsg, ok, applyErr = PLoadModule("UpdateApply", "Update/opFile.txt")
+	if errMsg or not ok then
+		self.updateErrMsg = "The update was not installed: " .. tostring(errMsg or applyErr)
+		return
+	end
+	self.updateAvailable = nil
+	if native then
+		local runtime = GetRuntimePath() or "."
+		SpawnProcess(runtime .. "/evryBuild.exe", '"' .. (GetScriptPath() or runtime) .. '/Launch.lua"')
+		Exit()
+	else
+		Restart()
+		self.doRestart = "Updating..."
+	end
 end
 
 function launch:ShowPrompt(r, g, b, str, func)

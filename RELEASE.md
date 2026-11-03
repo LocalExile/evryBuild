@@ -37,6 +37,7 @@ Run these commands from that same PowerShell window, stopping if any command fai
 dotnet test tests/LocalExile.Export.Tests
 python tests/evrybuild/test_localexile.py -v
 python tests/evrybuild/test_exporter.py -v
+python tests/evrybuild/test_updater.py -v
 python -m unittest discover -s scripts -p test_package_evrybuild.py -v
 ```
 
@@ -45,31 +46,52 @@ Packaging refuses a missing, changed or stale exporter. Rebuild it after changin
 See [validation instructions](tests/evrybuild/README.md) for optional real-data checks and the native game result.
 Without explicit real-data paths, that one optional test is skipped; all other checks must pass.
 
-## Create a clean portable ZIP
+## Prepare a release
 
-Run the following in PowerShell from the repository root. It creates a new timestamped folder under `dist`.
-Existing applications and profiles are never overwritten. The ZIP has one top-level `evryBuild` folder.
+A release package updates itself from later releases, so it is built from a clean commit that is pushed to
+`LocalExile/evryBuild` before anyone can update from it. Choose the tag first: `evrybuild-localexile-external-YYYY.MM.DD`,
+with `.2`, `.3` for a second release on the same day. Put the release's notes in a new top section of `CHANGELOG.md`
+and commit it; the portable application shows that section when it offers the update.
+
+Then, from the repository root with the exporter built and the tests passing:
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-$packageRoot = Join-Path (Get-Location).Path ('dist\external-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-New-Item -ItemType Directory -Path $packageRoot | Out-Null
-$appFolder = Join-Path $packageRoot 'evryBuild'
-python scripts/package-evrybuild.py --destination $appFolder
-if ($LASTEXITCODE -ne 0) { throw 'Portable packaging failed.' }
-$zipPath = Join-Path $packageRoot 'evryBuild-Portable-Windows-x64.zip'
-Compress-Archive -LiteralPath $appFolder -DestinationPath $zipPath -CompressionLevel Optimal
-$zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$zipHash + '  evryBuild-Portable-Windows-x64.zip' | Set-Content -LiteralPath ($zipPath + '.sha256') -Encoding ascii
-Write-Output $zipPath
-Write-Output $zipHash
+.\scripts\prepare-release.ps1 -Tag evrybuild-localexile-external-2026.11.10
 ```
 
-The package includes the current planner source/runtime, self-contained exporter, setup guide and license notices.
-It excludes personal builds, preferences, account tokens, save databases and server/game files.
-`evryBuild-package.json` records the source commit and SHA-256 of each copied application file.
-Packaging uses current files, including uncommitted source changes, so finalize and review the source before preparing
-an artifact intended for distribution. The recorded source commit alone does not describe an uncommitted change.
+It refuses uncommitted changes, copies every file exactly as that commit stores it, and writes a new
+`dist\release-<tag>-<time>` folder with the portable `evryBuild` folder and an `assets` folder holding:
+
+| File | What it is |
+|---|---|
+| `evryBuild-Portable-Windows-x64.zip` and `.sha256` | The portable download for new users |
+| `evryBuild-update.xml` | The update manifest: the commit, every file's source and SHA-256, and the release notes |
+| `evryBuild.Export.exe` | The exporter, which is built rather than committed, so updates download it from the release |
+| `evryBuild-package.json` | The package record, kept current by updates |
+
+`evryBuild-package.json` records the source commit and the SHA-256 of each copied application file.
+A package built without `-Tag` (with `scripts/package-evrybuild.py` alone) copies the working tree, including
+uncommitted changes, and never updates itself; use it for local testing only.
+
+## Publish and how updates find it
+
+Push the commit, then create the release with the tag on that commit and attach every file in `assets`:
+
+```powershell
+gh release create <tag> --repo LocalExile/evryBuild --target <commit> --title "<title>" --notes-file <notes.md> --latest (Get-ChildItem <assets folder>).FullName
+```
+
+A portable copy checks `https://github.com/LocalExile/evryBuild/releases/latest/download/evryBuild-update.xml`
+when it starts (Options: **Check for updates at startup**) and with **Check for Update**. It offers a release newer
+than its own. **Update Now** downloads only the files whose SHA-256 differs: committed files from
+`raw.githubusercontent.com` at the release's commit, and the exporter and package record from the release. Every file
+must match the manifest before anything changes. The update then renames each replaced file to `.old`, moves the
+new one in, and restarts. It starts a new process when `evryBuild.exe` or a DLL changed. If any step fails, the
+earlier steps are undone. `Builds/`, `Settings.xml`, `LocalExile.json` and other personal files are never touched.
+
+Only the release GitHub marks **Latest** is offered. Publish as a pre-release first to test it with a separate copy;
+nobody is offered it until it is marked Latest. Copies from releases before 2026.11 have no updater and need one
+manual download.
 
 ## Check the extracted package
 

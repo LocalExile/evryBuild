@@ -203,6 +203,107 @@ class PackageTests(unittest.TestCase):
             self.package()
         self.assertFalse(self.target.exists())
 
+    def test_a_package_without_a_release_tag_never_updates_itself(self):
+        self.package()
+        manifest = ET.parse(self.target / "manifest.xml").getroot()
+        self.assertIsNone(manifest.find("Update"))
+        self.assertIsNone(manifest.find("Version").get("release"))
+        self.assertEqual([], manifest.findall("File"))
+
+
+TAG = "evrybuild-localexile-external-2026.11.10"
+
+
+class ReleasePackageTests(PackageTests):
+    """Release packages: built from a clean commit, with an update manifest of what GitHub serves for it."""
+    def setUp(self):
+        super().setUp()
+        (self.source / "CHANGELOG.md").write_text("# Changelog\n\n## Next release\n\n- Updates in place.\n\n## Older\n\n- Old.\n")
+        (self.source / ".gitignore").write_text("runtime/LocalExile/\nsrc/Builds/\nsrc/Update/\nsrc/*.xml\nsrc/*.json\nsrc/*.ini\nsrc/*.run\nsrc/*.cfg\n")
+        # Committed with LF; the working copy then gets CRLF, as a Windows checkout does.
+        (self.source / "src/Launch.lua").write_bytes(b"line one\nline two\n")
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "fixture")
+        self.commit = self.git("rev-parse", "HEAD").strip()
+        (self.source / "src/Launch.lua").write_bytes(b"line one\r\nline two\r\n")
+        self.git("update-index", "--assume-unchanged", "src/Launch.lua")
+
+    def git(self, *args):
+        return package_module.subprocess.run(["git", "-C", str(self.source), "-c", "user.name=t", "-c", "user.email=t@t",
+                                              "-c", "core.autocrlf=false", *args],
+                                             capture_output=True, text=True, check=True).stdout
+
+    def release_package(self, base=None, assets=None):
+        return package_module.package(self.source, self.target, package_module.parse_release(TAG, base), assets)
+
+    def test_release_manifest_lists_every_file_by_its_committed_bytes(self):
+        assets = self.folder / "assets"
+        result = self.release_package(assets=assets)
+        self.assertEqual(("2026.11.10", TAG, self.commit), (result["release"], result["tag"], result["sourceRevision"]))
+        self.assertEqual(b"line one\nline two\n", (self.target / "Launch.lua").read_bytes(), "the committed bytes, not the working copy")
+        manifest = ET.parse(self.target / "manifest.xml").getroot()
+        version = manifest.find("Version")
+        self.assertEqual(("2026.11.10", TAG, self.commit, "evrybuild", "win32"),
+                         tuple(version.get(k) for k in ("release", "tag", "commit", "branch", "platform")))
+        self.assertEqual("https://github.com/LocalExile/evryBuild/releases/latest/download/evryBuild-update.xml",
+                         manifest.find("Update").get("url"))
+        sources = {s.get("part"): s.get("url") for s in manifest.findall("Source")}
+        self.assertEqual({"repo": f"https://raw.githubusercontent.com/LocalExile/evryBuild/{self.commit}/",
+                          "asset": f"https://github.com/LocalExile/evryBuild/releases/download/{TAG}/"}, sources)
+        self.assertEqual("## Next release\n\n- Updates in place.", manifest.find("Notes").text)
+        files = {f.get("name"): f for f in manifest.findall("File")}
+        packaged = {p.relative_to(self.target).as_posix() for p in self.target.rglob("*") if p.is_file()}
+        self.assertEqual(packaged - {"manifest.xml", "evryBuild.cmd"}, set(files))
+        for name, entry in files.items():
+            content = (self.target / name).read_bytes()
+            self.assertEqual((hashlib.sha256(content).hexdigest(), str(len(content))), (entry.get("sha256"), entry.get("size")), name)
+        self.assertEqual(("repo", "src/Launch.lua"), (files["Launch.lua"].get("part"), files["Launch.lua"].get("source")))
+        self.assertEqual(("repo", "runtime/" + package_module.HOST), (files["evryBuild.exe"].get("part"), files["evryBuild.exe"].get("source")))
+        self.assertEqual(("repo", "README.md"), (files["README.md"].get("part"), files["README.md"].get("source")))
+        self.assertEqual(("asset", "evryBuild.Export.exe"), (files["LocalExile/evryBuild.Export.exe"].get("part"),
+                                                             files["LocalExile/evryBuild.Export.exe"].get("source")))
+        self.assertEqual("asset", files["evryBuild-package.json"].get("part"))
+        self.assertEqual({"evryBuild.exe", "lua51.dll", "SimpleGraphic.dll", "lcurl.dll", "libcurl.dll", "zlib1.dll", "msvcr100.dll"},
+                         {n for n, f in files.items() if f.get("native") == "true"})
+        record = json.loads((self.target / "evryBuild-package.json").read_text())
+        self.assertEqual(("2026.11.10", TAG, self.commit), (record["release"], record["tag"], record["sourceRevision"]))
+        self.assertEqual({"evryBuild-update.xml", "evryBuild.Export.exe", "evryBuild-package.json"}, {p.name for p in assets.iterdir()})
+        self.assertEqual((self.target / "manifest.xml").read_bytes(), (assets / "evryBuild-update.xml").read_bytes())
+
+    def test_a_test_server_can_stand_in_for_github(self):
+        self.release_package(base="http://127.0.0.1:8123/")
+        manifest = ET.parse(self.target / "manifest.xml").getroot()
+        self.assertEqual("http://127.0.0.1:8123/releases/latest/download/evryBuild-update.xml", manifest.find("Update").get("url"))
+        self.assertEqual({"repo": f"http://127.0.0.1:8123/raw/{self.commit}/", "asset": f"http://127.0.0.1:8123/releases/download/{TAG}/"},
+                         {s.get("part"): s.get("url") for s in manifest.findall("Source")})
+
+    def test_uncommitted_or_untracked_application_files_are_refused(self):
+        (self.source / "help.txt").write_text("changed but not committed")
+        with self.assertRaisesRegex(package_module.PackageError, "clean commit"):
+            self.release_package()
+        self.git("checkout", "--", "help.txt")
+        (self.source / "src/Modules/Untracked.lua").write_text("not committed")
+        self.entries.append(("program", "Modules/Untracked.lua"))
+        self.write_manifest()
+        self.git("add", "manifest.xml")
+        self.git("commit", "-q", "-m", "manifest lists an untracked file")
+        with self.assertRaisesRegex(package_module.PackageError, "not committed"):
+            self.release_package()
+        self.assertFalse(self.target.exists())
+
+    def test_release_tags_and_options_are_checked(self):
+        for tag in ("v1.0.0", "evrybuild-localexile-external-2026-11-10", "evrybuild-localexile-external-2026.11.10-beta"):
+            with self.assertRaisesRegex(package_module.PackageError, "Release tags"):
+                package_module.parse_release(tag, None)
+        self.assertEqual("2026.11.10.2", package_module.parse_release(TAG + ".2", None).label)
+        with self.assertRaisesRegex(package_module.PackageError, "needs --release-tag"):
+            package_module.parse_release(None, "http://127.0.0.1:1/")
+        with self.assertRaisesRegex(package_module.PackageError, "ending in /"):
+            package_module.parse_release(TAG, "http://127.0.0.1:1")
+        with self.assertRaisesRegex(package_module.PackageError, "--assets is for release packages"):
+            package_module.package(self.source, self.target, None, self.folder / "assets")
+
 
 if __name__ == "__main__":
     unittest.main()

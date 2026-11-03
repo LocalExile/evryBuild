@@ -1,5 +1,9 @@
 # Changelog
 
+## evryBuild external LocalExile integration — next release
+
+- Update in place from new releases. evryBuild checks this repository's latest GitHub release at start (Options: **Check for updates at startup**) or with **Check for Update**, shows the release notes, and with **Update Now** downloads only the changed files, checks each against the release's SHA-256, installs them and restarts. A failed step undoes the earlier ones; builds and settings are never touched. Releases before this one need one manual download.
+
 ## evryBuild external LocalExile integration — 2026-11-03
 
 - Export passive-tree overrides as native tattoos. Supported tattoos, and the keystone granted by Journey Tattoo of Makanui, are mapped by name onto retained passives and checked against the client's target sets, the 50-tattoo cap and the one-per-group limits. Runegrafts, Forbidden/Loyalty/Honoured-notable tattoos, tattoos without a server effect and wrong placements are skipped with explicit warnings; override text is never imported as stats.
