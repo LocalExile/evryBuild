@@ -38,6 +38,7 @@ class PackageTests(unittest.TestCase):
         (self.source / "runtime/msvcr100.dll").write_bytes(b"compatibility runtime")
         (self.source / "src/Modules/LocalExileNative.lua").write_text("local process bridge")
         (self.source / "README.md").write_text("Portable application quick start", encoding="utf-8")
+        (self.source / "VERSION").write_text("1.1.0\n", encoding="utf-8")
         (self.source / "docs").mkdir()
         (self.source / "docs/LocalExile.md").write_text("Database export setup instructions", encoding="utf-8")
         (self.source / "docs/images").mkdir()
@@ -207,18 +208,30 @@ class PackageTests(unittest.TestCase):
         self.package()
         manifest = ET.parse(self.target / "manifest.xml").getroot()
         self.assertIsNone(manifest.find("Update"))
-        self.assertIsNone(manifest.find("Version").get("release"))
+        self.assertEqual("1.1.0", manifest.find("Version").get("release"), "shown as the local copy's version")
+        self.assertIsNone(manifest.find("Version").get("tag"))
         self.assertEqual([], manifest.findall("File"))
 
+    def test_a_missing_or_malformed_version_stops_packaging(self):
+        for text, message in ((None, "VERSION file is missing"), ("1.1", "semantic version"), ("v1.1.0", "semantic version"),
+                              ("01.1.0", "semantic version"), ("1.1.0+build", "semantic version")):
+            if text is None:
+                (self.source / "VERSION").unlink()
+            else:
+                (self.source / "VERSION").write_text(text)
+            with self.assertRaisesRegex(package_module.PackageError, message):
+                self.package()
+        self.assertFalse(self.target.exists())
 
-TAG = "evrybuild-localexile-external-2026.11.10"
+
+TAG = "v1.1.0"
 
 
 class ReleasePackageTests(PackageTests):
     """Release packages: built from a clean commit, with an update manifest of what GitHub serves for it."""
     def setUp(self):
         super().setUp()
-        (self.source / "CHANGELOG.md").write_text("# Changelog\n\n## Next release\n\n- Updates in place.\n\n## Older\n\n- Old.\n")
+        (self.source / "CHANGELOG.md").write_text("# Changelog\n\n## 1.1.0 - 2026-11-10\n\n- Updates in place.\n\n## 1.0.0 - 2026-11-04\n\n- Old.\n")
         (self.source / ".gitignore").write_text("runtime/LocalExile/\nsrc/Builds/\nsrc/Update/\nsrc/*.xml\nsrc/*.json\nsrc/*.ini\nsrc/*.run\nsrc/*.cfg\n")
         # Committed with LF; the working copy then gets CRLF, as a Windows checkout does.
         (self.source / "src/Launch.lua").write_bytes(b"line one\nline two\n")
@@ -240,18 +253,18 @@ class ReleasePackageTests(PackageTests):
     def test_release_manifest_lists_every_file_by_its_committed_bytes(self):
         assets = self.folder / "assets"
         result = self.release_package(assets=assets)
-        self.assertEqual(("2026.11.10", TAG, self.commit), (result["release"], result["tag"], result["sourceRevision"]))
+        self.assertEqual(("1.1.0", TAG, self.commit), (result["version"], result["tag"], result["sourceRevision"]))
         self.assertEqual(b"line one\nline two\n", (self.target / "Launch.lua").read_bytes(), "the committed bytes, not the working copy")
         manifest = ET.parse(self.target / "manifest.xml").getroot()
         version = manifest.find("Version")
-        self.assertEqual(("2026.11.10", TAG, self.commit, "evrybuild", "win32"),
+        self.assertEqual(("1.1.0", TAG, self.commit, "evrybuild", "win32"),
                          tuple(version.get(k) for k in ("release", "tag", "commit", "branch", "platform")))
         self.assertEqual("https://github.com/LocalExile/evryBuild/releases/latest/download/evryBuild-update.xml",
                          manifest.find("Update").get("url"))
         sources = {s.get("part"): s.get("url") for s in manifest.findall("Source")}
         self.assertEqual({"repo": f"https://raw.githubusercontent.com/LocalExile/evryBuild/{self.commit}/",
                           "asset": f"https://github.com/LocalExile/evryBuild/releases/download/{TAG}/"}, sources)
-        self.assertEqual("## Next release\n\n- Updates in place.", manifest.find("Notes").text)
+        self.assertEqual("## 1.1.0 - 2026-11-10\n\n- Updates in place.", manifest.find("Notes").text)
         files = {f.get("name"): f for f in manifest.findall("File")}
         packaged = {p.relative_to(self.target).as_posix() for p in self.target.rglob("*") if p.is_file()}
         self.assertEqual(packaged - {"manifest.xml", "evryBuild.cmd"}, set(files))
@@ -267,7 +280,7 @@ class ReleasePackageTests(PackageTests):
         self.assertEqual({"evryBuild.exe", "lua51.dll", "SimpleGraphic.dll", "lcurl.dll", "libcurl.dll", "zlib1.dll", "msvcr100.dll"},
                          {n for n, f in files.items() if f.get("native") == "true"})
         record = json.loads((self.target / "evryBuild-package.json").read_text())
-        self.assertEqual(("2026.11.10", TAG, self.commit), (record["release"], record["tag"], record["sourceRevision"]))
+        self.assertEqual(("1.1.0", TAG, self.commit), (record["version"], record["tag"], record["sourceRevision"]))
         self.assertEqual({"evryBuild-update.xml", "evryBuild.Export.exe", "evryBuild-package.json"}, {p.name for p in assets.iterdir()})
         self.assertEqual((self.target / "manifest.xml").read_bytes(), (assets / "evryBuild-update.xml").read_bytes())
 
@@ -293,16 +306,34 @@ class ReleasePackageTests(PackageTests):
         self.assertFalse(self.target.exists())
 
     def test_release_tags_and_options_are_checked(self):
-        for tag in ("v1.0.0", "evrybuild-localexile-external-2026-11-10", "evrybuild-localexile-external-2026.11.10-beta"):
+        for tag in ("1.1.0", "v1.1", "v01.1.0", "V1.1.0", "v1.1.0-", "v1.1.0+build", "evrybuild-localexile-external-2026.11.10"):
             with self.assertRaisesRegex(package_module.PackageError, "Release tags"):
                 package_module.parse_release(tag, None)
-        self.assertEqual("2026.11.10.2", package_module.parse_release(TAG + ".2", None).label)
+        self.assertEqual("1.3.0-rc.1", package_module.parse_release("v1.3.0-rc.1", None).label)
         with self.assertRaisesRegex(package_module.PackageError, "needs --release-tag"):
             package_module.parse_release(None, "http://127.0.0.1:1/")
         with self.assertRaisesRegex(package_module.PackageError, "ending in /"):
             package_module.parse_release(TAG, "http://127.0.0.1:1")
         with self.assertRaisesRegex(package_module.PackageError, "--assets is for release packages"):
             package_module.package(self.source, self.target, None, self.folder / "assets")
+
+    def test_tag_version_and_changelog_must_agree(self):
+        with self.assertRaisesRegex(package_module.PackageError, "does not match VERSION 1.1.0"):
+            package_module.package(self.source, self.target, package_module.parse_release("v1.2.0", None))
+        changelog = self.source / "CHANGELOG.md"
+        for text, message in (("# Changelog\n\n## 1.0.0 - 2026-11-04\n", "must be headed '## 1.1.0"),
+                              ("# Changelog\n\n## 1.1.0-rc.1 - 2026-11-09\n", "must be headed '## 1.1.0"),
+                              ("# Changelog\n\n## 1.1.0 - unreleased\n", "still calls 1.1.0 unreleased")):
+            changelog.write_text(text)
+            self.git("commit", "-q", "-am", "changelog")
+            with self.assertRaisesRegex(package_module.PackageError, message):
+                self.release_package()
+        self.assertFalse(self.target.exists())
+
+    def test_an_uncommitted_version_is_refused(self):
+        (self.source / "VERSION").write_text("1.2.0\n")
+        with self.assertRaisesRegex(package_module.PackageError, "clean commit"):
+            package_module.package(self.source, self.target, package_module.parse_release("v1.2.0", None))
 
 
 if __name__ == "__main__":

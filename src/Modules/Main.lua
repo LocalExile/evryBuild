@@ -223,7 +223,7 @@ function main:Init()
 	self.controls.versionLabel.label = function()
 		if launch.versionRelease then
 			-- The upstream PoB version is in About; this label must fit beside the build-list controls.
-			return "^8Version: " .. launch.versionRelease
+			return "^8Version: " .. launch.versionRelease .. (launch.updateSource and "" or " (local)")
 		end
 		return "^8" .. (launch.versionBranch == "beta" and "Beta: " or "Version: ") .. launch.versionNumber .. (launch.versionBranch == "dev" and " (Dev)" or "")
 	end

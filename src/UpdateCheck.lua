@@ -162,23 +162,49 @@ local function parseManifest(root)
 	return manifest
 end
 
--- "2026.11.10" or "2026.11.10.2": its numbers, so releases compare in order.
-local function releaseKey(release)
-	local key = { }
-	for number in tostring(release or ""):gmatch("%d+") do
-		key[#key + 1] = tonumber(number)
+-- A semantic version ("1.2.0", "1.3.0-rc.1"): its three numbers and its pre-release identifiers, or nil.
+local function parseVersion(text)
+	text = tostring(text or "")
+	local major, minor, patch, pre = text:match("^(%d+)%.(%d+)%.(%d+)%-([0-9A-Za-z%-%.]+)$")
+	if not major then
+		major, minor, patch = text:match("^(%d+)%.(%d+)%.(%d+)$")
 	end
-	return key
-end
-
-local function newerRelease(remote, installed)
-	local a, b = releaseKey(remote), releaseKey(installed)
-	for i = 1, math.max(#a, #b) do
-		if (a[i] or -1) ~= (b[i] or -1) then
-			return (a[i] or -1) > (b[i] or -1)
+	if not major then return nil end
+	local version = { tonumber(major), tonumber(minor), tonumber(patch), pre = { } }
+	if pre then
+		for identifier in (pre .. "."):gmatch("([^%.]*)%.") do
+			if identifier == "" then return nil end
+			version.pre[#version.pre + 1] = identifier:match("^%d+$") and tonumber(identifier) or identifier
 		end
 	end
-	return false
+	return version
+end
+
+-- Semantic Versioning precedence: numbers first; a pre-release comes before its release; pre-release identifiers
+-- compare numerically when both are numbers, a number before a word, words by ASCII; more identifiers come later.
+local function compareVersions(a, b)
+	for i = 1, 3 do
+		if a[i] ~= b[i] then return a[i] < b[i] and -1 or 1 end
+	end
+	if #a.pre == 0 or #b.pre == 0 then
+		return #a.pre == #b.pre and 0 or (#a.pre == 0 and 1 or -1)
+	end
+	for i = 1, math.max(#a.pre, #b.pre) do
+		local x, y = a.pre[i], b.pre[i]
+		if x == nil or y == nil then return x == nil and -1 or 1 end
+		if x ~= y then
+			if type(x) ~= type(y) then return type(x) == "number" and -1 or 1 end
+			return x < y and -1 or 1
+		end
+	end
+	return 0
+end
+
+-- Whether the release is newer than the installed copy. A copy whose version cannot be read takes any release.
+local function newerRelease(remote, installed)
+	local a, b = parseVersion(remote), parseVersion(installed)
+	if not a then return false end
+	return not b or compareVersions(a, b) > 0
 end
 
 local localManifest = parseManifest((xml.LoadXMLFile(scriptPath .. "/manifest.xml") or { })[1])
@@ -194,7 +220,7 @@ userAgent = "evryBuild/" .. installedRelease
 
 -- Checks a downloaded manifest before anything from it is used.
 local function validRemote(remote)
-	if not remote or not remote.version or not remote.version.release then
+	if not remote or not remote.version or not parseVersion(remote.version.release) then
 		return nil, "The release's update manifest is invalid."
 	end
 	if not remote.updateUrl or not trustedUrl(remote.updateUrl, localOrigin) then

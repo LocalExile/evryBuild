@@ -6,9 +6,10 @@ Run from the repository root:
 The checked-in compiled runtime is reused; this command does not download software, rebuild the native launcher,
 or read another PoB installation. Current fork source is copied, including uncommitted Lua changes.
 
-A release package (--release-tag) is different: it must be built from a clean commit, copies each file exactly as git
-stores it (what GitHub serves for that commit), and writes a manifest that lets the portable application update
-itself from later releases. --assets collects the files that release must attach.
+A release package (--release-tag) is different: it must be built from a clean commit whose VERSION file and newest
+CHANGELOG.md heading match the tag, copies each file exactly as git stores it (what GitHub serves for that commit),
+and writes a manifest that lets the portable application update itself from later releases. --assets collects the
+files that release must attach.
 """
 from __future__ import annotations
 
@@ -43,8 +44,10 @@ REQUIRED_OUTPUTS = {EXE, "Launch.lua", "GameVersions.lua", "Modules/Main.lua", "
 
 
 REPOSITORY_NAME = "LocalExile/evryBuild"
-TAG_PREFIX = "evrybuild-localexile-external-"
 UPDATE_ASSET = "evryBuild-update.xml"
+# Semantic Versioning 2.0.0 without build metadata: MAJOR.MINOR.PATCH, optionally -rc.1 and the like.
+IDENTIFIER = r"(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+SEMVER = rf"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-{IDENTIFIER}(?:\.{IDENTIFIER})*)?"
 EXPORTER_OUTPUT = "LocalExile/evryBuild.Export.exe"
 EXPORTER_ASSET = "evryBuild.Export.exe"
 PACKAGE_RECORD = "evryBuild-package.json"
@@ -61,7 +64,8 @@ class Release(NamedTuple):
 
     @property
     def label(self) -> str:
-        return self.tag[len(TAG_PREFIX):]
+        """The version the tag names: v1.2.0 is 1.2.0."""
+        return self.tag[1:]
 
     def update_url(self) -> str:
         base = self.update_base or f"https://github.com/{REPOSITORY_NAME}/"
@@ -82,8 +86,8 @@ def parse_release(tag: str | None, update_base: str | None) -> Release | None:
         if update_base:
             raise PackageError("--update-base needs --release-tag.")
         return None
-    if not re.fullmatch(re.escape(TAG_PREFIX) + r"\d{4}\.\d{2}\.\d{2}(\.\d+)?", tag):
-        raise PackageError(f"Release tags look like {TAG_PREFIX}2026.11.10 (optionally .2, .3 for a second release that day).")
+    if not re.fullmatch("v" + SEMVER, tag):
+        raise PackageError("Release tags are v and a semantic version, such as v1.2.0 or v1.3.0-rc.1.")
     if update_base is not None and not re.fullmatch(r"https?://[^/\s]+/(?:[^\s\"]*/)?", update_base):
         raise PackageError("--update-base must be an http(s) URL ending in /.")
     return Release(tag, update_base)
@@ -195,6 +199,28 @@ def application_files(source: Path) -> tuple[str, dict[Path, Path]]:
     return version.get("number"), files
 
 
+def read_version(source: Path) -> str:
+    """evryBuild's own version, from the committed VERSION file (PoB's version in manifest.xml is the planner base)."""
+    path = source / "VERSION"
+    if not path.is_file():
+        raise PackageError("The VERSION file is missing; it holds evryBuild's version, such as 1.0.0.")
+    version = path.read_text(encoding="utf-8-sig").strip()
+    if not re.fullmatch(SEMVER, version):
+        raise PackageError(f"VERSION must hold a semantic version such as 1.2.0, not '{version}'.")
+    return version
+
+
+def check_release_version(source: Path, release: Release, version: str) -> None:
+    """The tag, the committed VERSION and the newest changelog heading must name the same release."""
+    if release.label != version:
+        raise PackageError(f"The tag {release.tag} does not match VERSION {version}. Bump VERSION and commit, or use v{version}.")
+    heading = next((line for line in release_notes(source).splitlines() if line.startswith("## ")), "")
+    if not re.match(rf"## {re.escape(version)}(?:\s|$)", heading):
+        raise PackageError(f"CHANGELOG.md's newest section must be headed '## {version} - <date>'; it is '{heading}'.")
+    if "unreleased" in heading.lower():
+        raise PackageError(f"CHANGELOG.md still calls {version} unreleased; put the release date in its heading.")
+
+
 def release_notes(source: Path) -> str:
     """The newest CHANGELOG.md section: what the update popup shows."""
     changelog = source / "CHANGELOG.md"
@@ -266,6 +292,7 @@ def package(source_root: Path, destination: Path, release: Release | None = None
     if not target.parent.is_dir():
         raise PackageError("The destination's parent folder must already exist.")
     version, files = application_files(source)
+    evrybuild_version = read_version(source)
     if assets is not None:
         if release is None:
             raise PackageError("--assets is for release packages; add --release-tag.")
@@ -275,7 +302,11 @@ def package(source_root: Path, destination: Path, release: Release | None = None
     # Every application file is committed except the exporter, which is built and attached to the release.
     repository_paths = {relative: input_path.relative_to(source).as_posix() for relative, input_path in files.items()
                         if relative.as_posix() != EXPORTER_OUTPUT}
-    commit, blobs = committed_files(source, sorted(repository_paths.values())) if release else (None, {})
+    commit, blobs = committed_files(source, sorted({*repository_paths.values(), "VERSION"})) if release else (None, {})
+    if release:
+        if blobs["VERSION"].decode("utf-8-sig").strip() != evrybuild_version:
+            raise PackageError("VERSION differs from its committed copy; commit it first.")
+        check_release_version(source, release, evrybuild_version)
     stage = Path(tempfile.mkdtemp(prefix=".evrybuild-package-", dir=target.parent)).resolve()
     published = False
     try:
@@ -291,16 +322,17 @@ def package(source_root: Path, destination: Path, release: Release | None = None
         (stage / "Builds").mkdir()
         (stage / "evryBuild.cmd").write_bytes(
             b'@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\nstart "" "%~dp0evryBuild.exe" "%~dp0Launch.lua"\r\n')
-        record = {"application": BRAND, "upstreamVersion": version,
+        record = {"application": BRAND, "version": evrybuild_version, "upstreamVersion": version,
                   "sourceRevision": commit if release else source_revision(source),
                   "executable": EXE, "portableUserData": True, "filesSha256": hashes}
         if release:
-            record.update(release=release.label, tag=release.tag)
+            record.update(tag=release.tag)
         (stage / PACKAGE_RECORD).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         manifest = ET.Element("PoBVersion")
-        version_element = ET.SubElement(manifest, "Version", number=version, branch="evrybuild", platform="win32")
+        # number is PoB's version (the planner base); release is evryBuild's own, which updates compare.
+        version_element = ET.SubElement(manifest, "Version", number=version, branch="evrybuild", platform="win32",
+                                        release=evrybuild_version)
         if release:
-            version_element.set("release", release.label)
             version_element.set("tag", release.tag)
             version_element.set("commit", commit)
             ET.SubElement(manifest, "Update", url=release.update_url())
@@ -323,11 +355,11 @@ def package(source_root: Path, destination: Path, release: Release | None = None
             raise PackageError("The destination appeared while packaging; it was not overwritten.")
         os.rename(stage, target)
         published = True
-        result = {"ok": True, "application": BRAND, "destination": str(target),
+        result = {"ok": True, "application": BRAND, "version": evrybuild_version, "destination": str(target),
                   "executablePath": str(target / EXE), "copiedApplicationFiles": len(files),
                   "sourceRevision": record["sourceRevision"]}
         if release:
-            result.update(release=release.label, tag=release.tag)
+            result.update(tag=release.tag)
         if assets is not None:
             assets.mkdir()
             shutil.copy2(target / "manifest.xml", assets / UPDATE_ASSET)
@@ -344,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", required=True, type=Path, help="New portable application folder")
     parser.add_argument("--source-root", type=Path, default=REPOSITORY, help="evryBuild checkout (default: this repository)")
-    parser.add_argument("--release-tag", help=f"Build a self-updating release package for this tag ({TAG_PREFIX}YYYY.MM.DD)")
+    parser.add_argument("--release-tag", help="Build a self-updating release package for this tag: v and the VERSION file, such as v1.2.0")
     parser.add_argument("--assets", type=Path, help="New folder for the files the release must attach")
     parser.add_argument("--update-base", help="Test only: serve updates from this URL instead of GitHub")
     args = parser.parse_args(argv)

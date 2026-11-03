@@ -22,7 +22,7 @@ spec = importlib.util.spec_from_file_location("evrybuild_lua_harness", Path(__fi
 harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harness)
 
-TAG = "evrybuild-localexile-external-2026.11.10"
+TAG = "v1.1.0"
 COMMIT = "c0ffee"
 
 
@@ -96,7 +96,7 @@ class UpdaterTests(unittest.TestCase):
             self.write(name, data)
         self.write("Builds/Mine.xml", b"personal build")
         self.write("Settings.xml", b"personal settings")
-        self.write_manifest(self.app / "manifest.xml", "2026.11.03", self.installed)
+        self.write_manifest(self.app / "manifest.xml", "1.0.0", self.installed)
 
     def tearDown(self):
         os.chdir(self.previous)
@@ -159,7 +159,7 @@ class UpdaterTests(unittest.TestCase):
         return [data["result"][i] if i < len(data["result"]) else None for i in range(data["n"])]
 
     def update_to(self, files, **options):
-        self.publish("2026.11.10", files, **options)
+        self.publish("1.1.0", files, **options)
         check = self.run_lua("UpdateCheck.lua", "check")
         self.assertEqual("available", check[0], check)
         return check, self.run_lua("UpdateCheck.lua", "download")
@@ -167,18 +167,35 @@ class UpdaterTests(unittest.TestCase):
     def test_offers_a_newer_release_through_the_latest_redirect(self):
         new = dict(self.installed, **{"Launch.lua": b"new launch", "Modules/New Thing.lua": b"added"})
         del new["Data/Old.lua"]
-        self.publish("2026.11.10", new)
+        self.publish("1.1.0", new)
         result = self.run_lua("UpdateCheck.lua", "check")
-        self.assertEqual(["available", "2026.11.10", 2, len(b"new launch") + len(b"added")], result)
+        self.assertEqual(["available", "1.1.0", 2, len(b"new launch") + len(b"added")], result)
         self.assertEqual("/releases/latest/download/evryBuild-update.xml", self.server.requests[0])
         self.assertIn(f"/releases/download/{TAG}/evryBuild-update.xml", self.server.requests)
         self.assertTrue((self.app / "Update/pending.xml").is_file())
 
     def test_same_or_older_release_is_not_offered(self):
-        for release in ("2026.11.03", "2026.10.29"):
+        for release in ("1.0.0", "0.9.0"):
             self.publish(release, dict(self.installed, **{"Launch.lua": b"other"}))
-            self.assertEqual(["none", "2026.11.03"], self.run_lua("UpdateCheck.lua", "check"))
+            self.assertEqual(["none", "1.0.0"], self.run_lua("UpdateCheck.lua", "check"))
         self.assertFalse((self.app / "Update/pending.xml").exists())
+
+    def test_releases_compare_by_semantic_version(self):
+        cases = [("1.0.0", "1.0.1", True), ("1.9.0", "1.10.0", True), ("1.10.0", "1.9.0", False), ("2.0.0", "10.0.0", True),
+                 ("1.1.0-rc.1", "1.1.0", True), ("1.1.0", "1.1.0-rc.2", False), ("1.1.0-rc.1", "1.1.0-rc.2", True),
+                 ("1.1.0-rc.2", "1.1.0-rc.10", True), ("1.1.0-beta", "1.1.0-rc.1", True), ("1.1.0-alpha.1", "1.1.0-alpha", False),
+                 ("1.1.0-1", "1.1.0-alpha", True), ("1.0.0", "1.0.0", False), ("not a version", "1.0.0", True)]
+        changed = dict(self.installed, **{"Launch.lua": b"new launch"})
+        for installed, remote, offered in cases:
+            self.write_manifest(self.app / "manifest.xml", installed, self.installed)
+            self.publish(remote, changed)
+            result = self.run_lua("UpdateCheck.lua", "check")
+            self.assertEqual("available" if offered else "none", result[0], (installed, remote, result))
+        for invalid in ("1.1", "v1.1.0", "1.1.0-", "1.1.0-rc..1", "2026.11.10.2"):
+            self.publish(invalid, changed)
+            result = self.run_lua("UpdateCheck.lua", "check")
+            self.assertIsNone(result[0], invalid)
+            self.assertIn("invalid", result[1], invalid)
 
     def test_installs_changed_files_removes_retired_ones_and_keeps_personal_data(self):
         new = dict(self.installed, **{"Launch.lua": b"new launch", "Modules/New Thing.lua": b"added",
@@ -197,12 +214,12 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(b"personal build", (self.app / "Builds/Mine.xml").read_bytes())
         self.assertEqual(b"personal settings", (self.app / "Settings.xml").read_bytes())
         installed = ET.parse(self.app / "manifest.xml").getroot()
-        self.assertEqual("2026.11.10", installed.find("Version").get("release"))
+        self.assertEqual("1.1.0", installed.find("Version").get("release"))
         self.assertFalse(list(self.app.rglob("*.old")), "unlocked .old files are removed at once")
         self.assertFalse((self.app / "Update/opFile.txt").exists())
         self.assertIn(f"/releases/download/{TAG}/evryBuild.Export.exe", self.server.requests)
         self.assertNotIn(f"/raw/{COMMIT}/src/Unchanged.lua", self.server.requests)
-        self.assertEqual(["none", "2026.11.10"], self.run_lua("UpdateCheck.lua", "check"))
+        self.assertEqual(["none", "1.1.0"], self.run_lua("UpdateCheck.lua", "check"))
 
     def test_a_changed_dll_needs_a_new_process(self):
         _, download = self.update_to(dict(self.installed, **{"zstd.dll": b"new native"}))
@@ -210,7 +227,7 @@ class UpdaterTests(unittest.TestCase):
 
     def test_a_corrupt_download_changes_nothing(self):
         new = dict(self.installed, **{"Launch.lua": b"new launch", "Modules/Main.lua": b"new main"})
-        self.publish("2026.11.10", new, served=dict(new, **{"Modules/Main.lua": b"tampered"}))
+        self.publish("1.1.0", new, served=dict(new, **{"Modules/Main.lua": b"tampered"}))
         self.assertEqual("available", self.run_lua("UpdateCheck.lua", "check")[0])
         result = self.run_lua("UpdateCheck.lua", "download")
         self.assertIsNone(result[0])
@@ -221,7 +238,7 @@ class UpdaterTests(unittest.TestCase):
 
     def test_a_missing_file_on_the_server_fails_the_download(self):
         new = dict(self.installed, **{"Launch.lua": b"new launch"})
-        self.publish("2026.11.10", new, served={})
+        self.publish("1.1.0", new, served={})
         self.run_lua("UpdateCheck.lua", "check")
         result = self.run_lua("UpdateCheck.lua", "download")
         self.assertIsNone(result[0])
@@ -238,15 +255,15 @@ class UpdaterTests(unittest.TestCase):
     def test_unsafe_names_and_untrusted_sources_are_refused(self):
         for name in ("../escape.lua", "Builds/Mine.xml", "Settings.xml", "Update/opFile.txt", "C:/Windows/x.dll",
                      "manifest.xml", "Data/x.old", "a\\b.lua"):
-            self.publish("2026.11.10", dict(self.installed, **{name: b"x"}))
+            self.publish("1.1.0", dict(self.installed, **{name: b"x"}))
             result = self.run_lua("UpdateCheck.lua", "check")
             self.assertIsNone(result[0], name)
             self.assertIn("unsafe file", result[1], name)
-        self.publish("2026.11.10", self.installed, sources={"repo": "https://evil.example/", "asset": "https://evil.example/"})
+        self.publish("1.1.0", self.installed, sources={"repo": "https://evil.example/", "asset": "https://evil.example/"})
         result = self.run_lua("UpdateCheck.lua", "check")
         self.assertIsNone(result[0])
         self.assertIn("invalid entry", result[1])
-        self.publish("2026.11.10", self.installed, update="https://evil.example/update.xml")
+        self.publish("1.1.0", self.installed, update="https://evil.example/update.xml")
         self.assertIn("untrusted update source", self.run_lua("UpdateCheck.lua", "check")[1])
 
     def test_a_copy_without_an_update_source_never_checks(self):
@@ -269,7 +286,7 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(b"old launch", (self.app / "Launch.lua").read_bytes())
         self.assertEqual(b"old main", (self.app / "Modules/Main.lua").read_bytes())
         self.assertEqual(b"same", (self.app / "Unchanged.lua").read_bytes())
-        self.assertEqual("2026.11.03", ET.parse(self.app / "manifest.xml").getroot().find("Version").get("release"))
+        self.assertEqual("1.0.0", ET.parse(self.app / "manifest.xml").getroot().find("Version").get("release"))
         self.assertFalse(list(self.app.rglob("*.old")))
         self.assertEqual([True], self.run_lua("UpdateApply.lua", "Update/opFile.txt"), "the staged update can be retried")
         self.assertEqual(b"newer", (self.app / "Unchanged.lua").read_bytes())

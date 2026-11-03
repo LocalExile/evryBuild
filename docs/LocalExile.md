@@ -38,7 +38,7 @@ A release package checks GitHub for a newer evryBuild release when it starts, an
 When there is one, **Update Available** shows its notes and download size. **Update Now** downloads only the changed
 files, checks each against the release's SHA-256, installs them and restarts evryBuild. Your builds, settings and
 `LocalExile.json` are never changed. Turn off the startup check under **Options → Check for updates at startup**.
-Releases before 2026.11 have no updater: download the current release once, and later releases update in place.
+The dated releases up to 2026.11.03 have no updater: download 1.0.0 or later once, and later releases update in place.
 A copy you package yourself from source never checks for updates.
 
 ## Export a build

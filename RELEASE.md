@@ -46,20 +46,40 @@ Packaging refuses a missing, changed or stale exporter. Rebuild it after changin
 See [validation instructions](tests/evrybuild/README.md) for optional real-data checks and the native game result.
 Without explicit real-data paths, that one optional test is skipped; all other checks must pass.
 
+## Versions
+
+evryBuild has its own [semantic version](https://semver.org/) in the `VERSION` file, separate from the upstream PoB
+version in `manifest.xml` (the planner it is based on). The portable application shows it, and updates compare it.
+
+| Change | Bump | Example |
+|---|---|---|
+| Fixes only | Patch | 1.2.0 to 1.2.1 |
+| New features, compatible | Minor | 1.2.1 to 1.3.0 |
+| Users must reinstall, or the save/export contract changes | Major | 1.3.0 to 2.0.0 |
+
+A release candidate is `1.3.0-rc.1`, `1.3.0-rc.2`, and so on; it sorts before `1.3.0`. Publish candidates as GitHub
+pre-releases so that only people who download them get them. The dated releases up to 2026.11.03 predate versioning
+and the updater; 1.0.0 is the first versioned release.
+
 ## Prepare a release
 
 A release package updates itself from later releases, so it is built from a clean commit that is pushed to
-`LocalExile/evryBuild` before anyone can update from it. Choose the tag first: `evrybuild-localexile-external-YYYY.MM.DD`,
-with `.2`, `.3` for a second release on the same day. Put the release's notes in a new top section of `CHANGELOG.md`
-and commit it; the portable application shows that section when it offers the update.
+`LocalExile/evryBuild` before anyone can update from it. In one commit:
+
+1. Set `VERSION` to the new version.
+2. Head the newest `CHANGELOG.md` section `## <version> - <date>`, for example `## 1.2.0 - 2026-11-20`. Between
+   releases it can say `## 1.2.0 - unreleased`, but packaging refuses that. The portable application shows this
+   section when it offers the update.
 
 Then, from the repository root with the exporter built and the tests passing:
 
 ```powershell
-.\scripts\prepare-release.ps1 -Tag evrybuild-localexile-external-2026.11.10
+.\scripts\prepare-release.ps1
 ```
 
-It refuses uncommitted changes, copies every file exactly as that commit stores it, and writes a new
+The tag is `v` and the version (`v1.2.0`); `-Tag` must match `VERSION` if you pass it. The script refuses uncommitted
+changes, a tag that differs from `VERSION`, and a changelog heading that does not name the version. It copies every
+file exactly as that commit stores it, and writes a new
 `dist\release-<tag>-<time>` folder with the portable `evryBuild` folder and an `assets` folder holding:
 
 | File | What it is |
@@ -78,20 +98,22 @@ uncommitted changes, and never updates itself; use it for local testing only.
 Push the commit, then create the release with the tag on that commit and attach every file in `assets`:
 
 ```powershell
-gh release create <tag> --repo LocalExile/evryBuild --target <commit> --title "<title>" --notes-file <notes.md> --latest (Get-ChildItem <assets folder>).FullName
+gh release create v1.2.0 --repo LocalExile/evryBuild --target <commit> --title "evryBuild 1.2.0" --notes-file <notes.md> --latest (Get-ChildItem <assets folder>).FullName
 ```
+
+For a release candidate, use `--prerelease` instead of `--latest`.
 
 A portable copy checks `https://github.com/LocalExile/evryBuild/releases/latest/download/evryBuild-update.xml`
 when it starts (Options: **Check for updates at startup**) and with **Check for Update**. It offers a release newer
-than its own. **Update Now** downloads only the files whose SHA-256 differs: committed files from
+than its own by semantic-version order. **Update Now** downloads only the files whose SHA-256 differs: committed files from
 `raw.githubusercontent.com` at the release's commit, and the exporter and package record from the release. Every file
 must match the manifest before anything changes. The update then renames each replaced file to `.old`, moves the
 new one in, and restarts. It starts a new process when `evryBuild.exe` or a DLL changed. If any step fails, the
 earlier steps are undone. `Builds/`, `Settings.xml`, `LocalExile.json` and other personal files are never touched.
 
 Only the release GitHub marks **Latest** is offered. Publish as a pre-release first to test it with a separate copy;
-nobody is offered it until it is marked Latest. Copies from releases before 2026.11 have no updater and need one
-manual download.
+nobody is offered it until it is marked Latest. Copies from the dated releases (up to 2026.11.03) have no updater
+and need one manual download of 1.0.0 or later.
 
 ## Check the extracted package
 
