@@ -139,7 +139,6 @@ public class PathOfBuildingTests
     [InlineData("<PathOfBuilding><Build className='Witch' /><Items><Slot name='Helmet' itemId='1'/></Items></PathOfBuilding>", "missing item")]
     [InlineData("<PathOfBuilding><Build className='Witch' /><Items><Item id='1'>A</Item><Item id='1'>B</Item></Items></PathOfBuilding>", "Duplicate item")]
     [InlineData("<PathOfBuilding><Build className='Witch' /><Items><Slot name='Helmet' itemId='0'/><Slot name='Helmet' itemId='0'/></Items></PathOfBuilding>", "Duplicate equipment")]
-    [InlineData("<PathOfBuilding><Build className='Witch' /><Skills><Skill enabled='maybe'/></Skills></PathOfBuilding>", "expected true or false")]
     [InlineData("<PathOfBuilding><Build className='Witch' /><Skills><Skill><Gem nameSpec='Fireball' level='41'/></Skill></Skills></PathOfBuilding>", "level")]
     [InlineData("<PathOfBuilding><Build className='Witch' /><Skills><Skill><Gem nameSpec='Fireball' level='20' quality='-1'/></Skill></Skills></PathOfBuilding>", "quality")]
     [InlineData("<PathOfBuilding><Build className='Witch' /><Spec><URL>AAAABgMAAgBk</URL></Spec></PathOfBuilding>", "truncated")]
@@ -151,6 +150,52 @@ public class PathOfBuildingTests
     public void Rejects_invalid_and_ambiguous_builds(string xml, string message)
     {
         Assert.Contains(message, Assert.Throws<FormatException>(() => PathOfBuilding.Parse(xml)).Message);
+    }
+
+    // PoB saves flags with tostring(), so an item set it never swapped is saved as useSecondWeaponSet="nil", and PoB reads
+    // anything but "true" as false. Reported from a new build: "Invalid ItemSet.useSecondWeaponSet; expected true or false."
+    [Theory]
+    [InlineData(" useSecondWeaponSet=\"nil\"", false)]
+    [InlineData(" useSecondWeaponSet=\"true\"", true)]
+    [InlineData(" useSecondWeaponSet=\"false\"", false)]
+    [InlineData(" useSecondWeaponSet=\"\"", false)]
+    [InlineData(" useSecondWeaponSet=\"True\"", false)]
+    [InlineData("", false)]
+    public void Reads_the_weapon_swap_flag_as_pob_does(string attribute, bool expected)
+    {
+        var build = PathOfBuilding.Parse($"""
+            <PathOfBuilding><Build className="Witch" />
+              <Items activeItemSet="1"><Item id="1">Rarity: NORMAL
+            Driftwood Wand</Item>
+                <ItemSet id="1"{attribute}><Slot name="Weapon 1" itemId="1" /></ItemSet>
+              </Items>
+            </PathOfBuilding>
+            """);
+        Assert.Equal(expected, build.UseSecondWeaponSet);
+        Assert.Equal("Weapon 1", Assert.Single(build.Slots).Name);
+    }
+
+    [Fact]
+    public void Reads_the_legacy_items_flag_as_pob_does()
+    {
+        Assert.False(PathOfBuilding.Parse("""<PathOfBuilding><Build className="Witch" /><Items useSecondWeaponSet="nil" /></PathOfBuilding>""").UseSecondWeaponSet);
+        Assert.True(PathOfBuilding.Parse("""<PathOfBuilding><Build className="Witch" /><Items useSecondWeaponSet="true" /></PathOfBuilding>""").UseSecondWeaponSet);
+    }
+
+    [Fact]
+    public void Reads_skill_and_gem_flags_as_pob_does()
+    {
+        var build = PathOfBuilding.Parse("""
+            <PathOfBuilding><Build className="Witch" /><Skills>
+              <Skill enabled="nil"><Gem level="20" nameSpec="Fireball" enabled="nil" /></Skill>
+              <Skill active="true" enabled="false"><Gem level="20" nameSpec="Fireball" /></Skill>
+              <Skill enabled="true"><Gem level="20" nameSpec="Fireball" enabled="maybe" /><Gem level="20" nameSpec="Arc" enabled="true" /></Skill>
+              <Skill><Gem level="20" nameSpec="Fireball" enabled="" /></Skill>
+            </Skills></PathOfBuilding>
+            """);
+        // A group is enabled when active or enabled is "true"; a gem without the attribute is enabled, otherwise only "true" is.
+        Assert.Equal([false, true, true, false], build.Skills.Select(s => s.Enabled));
+        Assert.Equal([false, true, false, true, false], build.Skills.SelectMany(s => s.Gems).Select(g => g.Enabled));
     }
 
     [Fact]

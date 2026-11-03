@@ -91,7 +91,7 @@ public static class PathOfBuilding
         var selectedSkills = SelectSet(skillsElement, "SkillSet", "activeSkillSet");
         return new(characterClass, level, tree, ReadOnly(items), ReadOnly(slots),
             ReadOnly(ReadSkills(selectedSkills, skillsElement)), Optional(build, "ascendClassName"),
-            Boolean(selectedItems, "useSecondWeaponSet", false), Optional(build, "bandit"),
+            PobFlag(selectedItems, "useSecondWeaponSet", false), Optional(build, "bandit"),
             Optional(build, "pantheonMajorGod"), Optional(build, "pantheonMinorGod"));
     }
 
@@ -343,9 +343,10 @@ public static class PathOfBuilding
                 if (name.Length == 0 && gemId is null && skillId is null) throw Error("A gem has no name or identity.");
                 gems.Add(new(name, gemId, skillId, Optional(gem, "variantId"),
                     Number(gem, "level", defaultLevel, 1, 40), Number(gem, "quality", defaultQuality, 0, 100),
-                    Boolean(gem, "enabled", true), Optional(gem, "qualityId")));
+                    PobFlag(gem, "enabled", true), Optional(gem, "qualityId")));
             }
-            result.Add(new(Optional(group, "slot"), Boolean(group, "enabled", Boolean(group, "active", false)),
+            // PoB: socketGroup.enabled = active == "true" or enabled == "true" (active is the older name).
+            result.Add(new(Optional(group, "slot"), PobFlag(group, "active", false) || PobFlag(group, "enabled", false),
                 ReadOnly(gems), Optional(group, "source"), Optional(group, "imbuedSupport")));
         }
         return result;
@@ -370,13 +371,13 @@ public static class PathOfBuilding
             value >= minimum && value <= maximum) return value;
         throw Error($"Invalid or missing {element?.Name}.{name}; expected {minimum} through {maximum}.");
     }
-    static bool Boolean(XElement? element, string name, bool fallback) => Optional(element, name) switch
-    {
-        null => fallback,
-        "true" => true,
-        "false" => false,
-        _ => throw Error($"Invalid {element?.Name}.{name}; expected true or false.")
-    };
+    /// <summary>
+    /// A PoB flag read the way PoB reads it: only "true" is true. PoB writes these with tostring(), so a value it never
+    /// set is saved as "nil" (a new item set's useSecondWeaponSet, for one), and PoB treats that, like anything else
+    /// but "true", as false. A missing attribute takes PoB's default for that flag.
+    /// </summary>
+    static bool PobFlag(XElement? element, string name, bool whenMissing) =>
+        element?.Attribute(name) is { } attribute ? attribute.Value == "true" : whenMissing;
     static uint Unsigned(string text, string description) =>
         uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out uint value) ? value
         : throw Error($"Invalid {description} ID '{text}'.");
