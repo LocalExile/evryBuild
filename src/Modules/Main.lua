@@ -222,7 +222,8 @@ function main:Init()
 	self.controls.versionLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {148, -2, 0, 16}, "")
 	self.controls.versionLabel.label = function()
 		if launch.versionRelease then
-			return "^8Version: " .. launch.versionRelease .. " (PoB " .. launch.versionNumber .. ")"
+			-- The upstream PoB version is in About; this label must fit beside the build-list controls.
+			return "^8Version: " .. launch.versionRelease
 		end
 		return "^8" .. (launch.versionBranch == "beta" and "Beta: " or "Version: ") .. launch.versionNumber .. (launch.versionBranch == "dev" and " (Dev)" or "")
 	end
@@ -1389,7 +1390,8 @@ function main:OpenAboutPopup(helpSectionIndex)
 	controls.close = new("ButtonControl", {"TOPRIGHT",nil,"TOPRIGHT"}, {-10, 10, 50, 20}, "Close", function()
 		self:ClosePopup()
 	end)
-	controls.version = new("LabelControl", nil, {0, 18, 0, 18}, "^7evryBuild - POB for LocalExile v"..launch.versionNumber)
+	controls.version = new("LabelControl", nil, {0, 18, 0, 18}, "^7evryBuild - POB for LocalExile "..
+		(launch.versionRelease and launch.versionRelease.." (PoB v"..launch.versionNumber..")" or "v"..launch.versionNumber))
 	controls.forum = new("LabelControl", nil, {0, 36, 0, 18}, "^7Based on Openarl's Path of Building")
 	controls.github = new("LabelControl", nil, {0, 62, 0, 18}, "^7Based on Openarl and the Path of Building community contributors; see LICENSE.md.")
 	controls.verLabel = new("ButtonControl", {"TOPLEFT", nil, "TOPLEFT"}, {10, 85, 100, 18}, "^7Version history:", function()

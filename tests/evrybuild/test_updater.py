@@ -226,6 +226,7 @@ class UpdaterTests(unittest.TestCase):
         result = self.run_lua("UpdateCheck.lua", "download")
         self.assertIsNone(result[0])
         self.assertIn("Couldn't download Launch.lua", result[1])
+        self.assertIn("HTTP 404", result[1])
 
     def test_staged_files_from_an_interrupted_attempt_are_reused(self):
         new = dict(self.installed, **{"Launch.lua": b"new launch"})

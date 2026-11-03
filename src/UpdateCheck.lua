@@ -120,13 +120,18 @@ local function download(url, outName)
 			end)
 		end
 		local ok, err = easy:perform()
+		local code = tonumber(easy:getinfo(curl.INFO_RESPONSE_CODE)) or 0
 		easy:close()
 		if file then file:close() end
 		if ok then
 			return outName and true or table.concat(chunks)
 		end
-		lastError = err and err:msg() or "download failed"
+		lastError = code >= 400 and ("the server answered HTTP " .. code) or (err and err:msg()) or "download failed"
 		ConPrintf("Download failed: %s (%s)", url, lastError)
+		if code >= 400 and code < 500 then
+			-- Missing or refused: asking again will not help.
+			break
+		end
 	end
 	return nil, lastError
 end
