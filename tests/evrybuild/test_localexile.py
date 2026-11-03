@@ -108,7 +108,7 @@ class IntegrationTests(unittest.TestCase):
             M = assert(loadfile(modulePath))()
         ''')
 
-    def test_generic_downloads_updates_and_browser_links_never_start_workers(self):
+    def test_generic_downloads_and_browser_links_never_start_workers_and_updates_need_a_release(self):
         self.lua.run('launchFile = ' + json.dumps((REPOSITORY / 'src/Launch.lua').as_posix()))
         self.lua.run(r'''
             function GetTime() return 1 end
@@ -124,8 +124,22 @@ class IntegrationTests(unittest.TestCase):
                 assert(OpenURL(url)==false)
             end
             launch.evryBuildEdition=false -- This policy must not depend on an optional edition flag.
-            launch:CheckForUpdate(); launch:ApplyUpdate('normal')
+            -- A copy without a release's update source (built from source) never checks or downloads.
+            launch:CheckForUpdate(); launch:CheckForUpdate(true); launch:DownloadUpdate()
             assert(count==3 and browserCalls==0 and #workers==0)
+            -- A release copy runs only its own updater, and downloads only after a check found a release.
+            launch.subScripts={}; launch.lastUpdateCheck=0
+            launch.updateSource='https://github.com/LocalExile/evryBuild/releases/latest/download/evryBuild-update.xml'
+            launch:DownloadUpdate()
+            assert(#workers==0)
+            launch:CheckForUpdate(true)
+            assert(#workers==1 and workers[1].args[1]=='check' and workers[1].script:find('Module: Update Check', 1, true))
+            assert(launch.subScripts[1].type=='UPDATE' and launch.subScripts[1].background==true)
+            launch:CheckForUpdate()
+            assert(#workers==1, 'one update worker at a time')
+            launch.devMode=true; launch.updateCheckRunning=false
+            launch:CheckForUpdate()
+            assert(#workers==1, 'a source checkout never updates')
         ''')
 
     def test_legacy_account_and_build_site_apis_are_offline(self):

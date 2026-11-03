@@ -189,24 +189,31 @@ function main:Init()
 	self.controls.about = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {72, 0, 68, 20}, "About", function()
 		self:OpenAboutPopup()
 	end)
-	self.controls.applyUpdate = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, -24, 140, 20}, "^x50E050Update Ready", function()
+	self.controls.applyUpdate = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, -24, 140, 20}, "", function()
 		self:OpenUpdatePopup()
 	end)
+	self.controls.applyUpdate.label = function()
+		return launch.updateCheckRunning and launch.updateProgress or "^x50E050Update Available"
+	end
 	self.controls.applyUpdate.shown = function()
-		return launch.updateAvailable and launch.updateAvailable ~= "none"
+		return type(launch.updateAvailable) == "table"
+	end
+	self.controls.applyUpdate.enabled = function()
+		return not launch.updateCheckRunning
 	end
 	self.controls.checkUpdate = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, -24, 140, 20}, "", function()
 		launch:CheckForUpdate()
 	end)
 	self.controls.checkUpdate.shown = function()
-		return not launch.devMode and (not launch.updateAvailable or launch.updateAvailable == "none")
+		return not launch.devMode and type(launch.updateAvailable) ~= "table"
 	end
 	self.controls.checkUpdate.label = function()
-		if launch.evryBuildEdition then return "evryBuild" end
+		-- A copy built from source has no update source; releases update from LocalExile/evryBuild.
+		if not launch.updateSource then return "evryBuild" end
 		return launch.updateCheckRunning and launch.updateProgress or "Check for Update"
 	end
 	self.controls.checkUpdate.enabled = function()
-		return not launch.evryBuildEdition and not launch.updateCheckRunning
+		return launch.updateSource ~= nil and not launch.updateCheckRunning
 	end
 	self.controls.forkLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {148, -26, 0, 16}, "")
 	self.controls.forkLabel.label = function()
@@ -214,6 +221,10 @@ function main:Init()
 	end
 	self.controls.versionLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {148, -2, 0, 16}, "")
 	self.controls.versionLabel.label = function()
+		if launch.versionRelease then
+			-- The upstream PoB version is in About; this label must fit beside the build-list controls.
+			return "^8Version: " .. launch.versionRelease .. (launch.updateSource and "" or " (local)")
+		end
 		return "^8" .. (launch.versionBranch == "beta" and "Beta: " or "Version: ") .. launch.versionNumber .. (launch.versionBranch == "dev" and " (Dev)" or "")
 	end
 	self.controls.devMode = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, -26, 0, 20}, colorCodes.NEGATIVE.."Dev Mode")
@@ -361,7 +372,8 @@ function main:OnFrame()
 			ToastNotification:Add("No update available\nYou are running the latest version.")
 			launch.updateAvailable = nil
 		elseif not self.updateAvailableShown then
-			ToastNotification:Add("Update Available\nAn update has been downloaded and is ready\nto be applied.")
+			ToastNotification:Add("Update Available\nevryBuild " .. tostring(launch.updateAvailable.release) ..
+				" is available.\nClick Update Available to see what changed.")
 			self.updateAvailableShown = true
 		end
 	end
@@ -553,6 +565,9 @@ function main:LoadSettings(ignoreBuild)
 				if node.attrib.betaTest then
 					self.betaTest = node.attrib.betaTest == "true"
 				end
+				if node.attrib.checkForUpdates then
+					self.checkForUpdates = node.attrib.checkForUpdates == "true"
+				end
 				if node.attrib.edgeSearchHighlight then
 					self.edgeSearchHighlight = node.attrib.edgeSearchHighlight == "true"
 				end
@@ -715,6 +730,7 @@ function main:SaveSettings()
 		decimalSeparator = self.decimalSeparator,
 		showTitlebarName = tostring(self.showTitlebarName),
 		betaTest = tostring(self.betaTest),
+		checkForUpdates = tostring(self.checkForUpdates ~= false),
 		edgeSearchHighlight = tostring(self.edgeSearchHighlight),
 		defaultGemQuality = tostring(self.defaultGemQuality or 0),
 		defaultCharLevel = tostring(self.defaultCharLevel or 1),
@@ -802,6 +818,7 @@ function main:OpenOptionsPopup(savedState)
 		decimalSeparator = self.decimalSeparator,
 		showTitlebarName = self.showTitlebarName,
 		betaTest = self.betaTest,
+		checkForUpdates = self.checkForUpdates,
 		edgeSearchHighlight = self.edgeSearchHighlight,
 		defaultGemQuality = self.defaultGemQuality or 0,
 		defaultCharLevel = self.defaultCharLevel or 1,
@@ -937,9 +954,13 @@ function main:OpenOptionsPopup(savedState)
 		"The default value is " .. tostring(defaultColorCodes.HIGHLIGHT:gsub('^(^)', '0')) .."\nIf updating while inside a build, please re-load the build after saving."
 
 	nextRow()
-	controls.betaTest = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Opt-in to weekly beta test builds:", function(state)
-		self.betaTest = state
+	controls.checkForUpdates = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Check for updates at startup:", function(state)
+		self.checkForUpdates = state
 	end)
+	controls.checkForUpdates.tooltipText = "Looks for a new evryBuild release on GitHub when evryBuild starts.\nNothing is downloaded until you choose Update Now."
+	controls.checkForUpdates.enabled = function()
+		return launch.updateSource ~= nil
+	end
 
 	nextRow()
 	controls.edgeSearchHighlight = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20}, "^7Show search circles at viewport edge", function(state)
@@ -1078,7 +1099,7 @@ function main:OpenOptionsPopup(savedState)
 		controls.disableDevAutoSave.state = self.disableDevAutoSave
 	end
 
-	controls.betaTest.state = self.betaTest
+	controls.checkForUpdates.state = self.checkForUpdates ~= false
 	controls.edgeSearchHighlight.state = self.edgeSearchHighlight
 	controls.titlebarName.state = self.showTitlebarName
 	controls.showFlavourText.state = self.showFlavourText
@@ -1105,9 +1126,6 @@ function main:OpenOptionsPopup(savedState)
 		if self.mode == "LIST" then
 			self.modes.LIST:BuildList()
 		end
-		if not launch.devMode then
-			main:SetManifestBranch(self.betaTest and "beta" or "master")
-		end
 		SetDPIScaleOverridePercent(self.dpiScaleOverridePercent)
 		main:ClosePopup()
 		main:SaveSettings()
@@ -1126,6 +1144,7 @@ function main:OpenOptionsPopup(savedState)
 		self.decimalSeparator = savedState.decimalSeparator
 		self.showTitlebarName = savedState.showTitlebarName
 		self.betaTest = savedState.betaTest
+		self.checkForUpdates = savedState.checkForUpdates
 		self.edgeSearchHighlight = savedState.edgeSearchHighlight
 		self.defaultGemQuality = savedState.defaultGemQuality
 		self.defaultCharLevel = savedState.defaultCharLevel
@@ -1221,37 +1240,58 @@ function main:SetManifestBranch(branchName)
 	xml.SaveXMLFile(localManXML[1], manifestLocation)
 end
 
+-- The release found by the last check: its notes, the download size, and Update Now (download, verify, install).
 function main:OpenUpdatePopup()
+	local update = launch.updateAvailable
+	if type(update) ~= "table" then
+		return
+	end
+	local notes = ""
+	local pending = require("xml").LoadXMLFile("Update/pending.xml")
+	for _, node in ipairs(pending and pending[1] or { }) do
+		if type(node) == "table" and node.elem == "Notes" and type(node[1]) == "string" then
+			notes = node[1]
+		end
+	end
 	local changeList = { }
-	local changelogName = launch.devMode and "../changelog.txt" or "changelog.txt"
-	local changelogFile = io.open(changelogName, "r")
-	if changelogFile then
-		changelogFile:close()
-		for line in io.lines(changelogName) do
-			local ver, date = line:match("^VERSION%[(.+)%]%[(.+)%]$")
-			if ver then
-				if ver == launch.versionNumber then
-					break
-				end
-				if #changeList > 0 then
-					t_insert(changeList, { height = 12 })
-				end
-				t_insert(changeList, { height = 20, "^7Version "..ver.." ("..date..")" })
+	local function wrap(text)
+		-- The list does not wrap, so long note lines are split at spaces.
+		local lines, current = { }, ""
+		for word in text:gmatch("%S+") do
+			if #current > 0 and #current + #word > 110 then
+				t_insert(lines, current)
+				current = "    " .. word
 			else
-				t_insert(changeList, { height = 14, "^7"..line })
+				current = #current > 0 and current .. " " .. word or word
+			end
+		end
+		t_insert(lines, current)
+		return lines
+	end
+	t_insert(changeList, { height = 20, "^7evryBuild " .. tostring(launch.versionRelease or "?") .. " -> " .. tostring(update.release) })
+	t_insert(changeList, { height = 16, string.format("^8%d file(s) to download (%.1f MB). Your builds and settings are not changed.",
+		update.files, update.bytes / 1048576) })
+	t_insert(changeList, { height = 12 })
+	for line in (notes:gsub("\r", "") .. "\n"):gmatch("([^\n]*)\n") do
+		local heading = line:match("^#+%s*(.*)$")
+		if heading then
+			t_insert(changeList, { height = 20, "^7" .. heading })
+		else
+			for _, part in ipairs(wrap(line:gsub("%*%*", ""):gsub("`", ""))) do
+				t_insert(changeList, { height = 14, "^7" .. part })
 			end
 		end
 	end
 	local controls = { }
 	controls.changeLog = new("TextListControl", nil, {0, 20, 780, 542}, nil, changeList)
-	controls.update = new("ButtonControl", nil, {-45, 570, 80, 20}, "Update", function()
+	controls.update = new("ButtonControl", nil, {-55, 570, 100, 20}, "Update Now", function()
 		self:ClosePopup()
 		local ret = self:CallMode("CanExit", "UPDATE")
 		if ret == nil or ret == true then
-			launch:ApplyUpdate(launch.updateAvailable)
+			launch:DownloadUpdate()
 		end
 	end)
-	controls.cancel = new("ButtonControl", nil, {45, 570, 80, 20}, "Cancel", function()
+	controls.cancel = new("ButtonControl", nil, {55, 570, 80, 20}, "Later", function()
 		self:ClosePopup()
 	end)
 	self:OpenPopup(800, 600, "Update Available", controls)
@@ -1350,7 +1390,8 @@ function main:OpenAboutPopup(helpSectionIndex)
 	controls.close = new("ButtonControl", {"TOPRIGHT",nil,"TOPRIGHT"}, {-10, 10, 50, 20}, "Close", function()
 		self:ClosePopup()
 	end)
-	controls.version = new("LabelControl", nil, {0, 18, 0, 18}, "^7evryBuild - POB for LocalExile v"..launch.versionNumber)
+	controls.version = new("LabelControl", nil, {0, 18, 0, 18}, "^7evryBuild - POB for LocalExile "..
+		(launch.versionRelease and launch.versionRelease.." (PoB v"..launch.versionNumber..")" or "v"..launch.versionNumber))
 	controls.forum = new("LabelControl", nil, {0, 36, 0, 18}, "^7Based on Openarl's Path of Building")
 	controls.github = new("LabelControl", nil, {0, 62, 0, 18}, "^7Based on Openarl and the Path of Building community contributors; see LICENSE.md.")
 	controls.verLabel = new("ButtonControl", {"TOPLEFT", nil, "TOPLEFT"}, {10, 85, 100, 18}, "^7Version history:", function()

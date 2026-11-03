@@ -23,8 +23,9 @@ See [setup, database safety and compatibility](docs/LocalExile.md).
 
 [View the full application screenshot](docs/images/localexile-export.png).
 
-All application networking is disabled: official account imports, OAuth, trade, web build sharing,
-URL shortening, updates and browser launches are unavailable.
+Official account imports, OAuth, trade, web build sharing, URL shortening and browser launches are disabled.
+The only network access is evryBuild's own updater, which looks for a newer release of this repository on GitHub
+(turn it off under **Options → Check for updates at startup**) and downloads nothing until you choose **Update Now**.
 Local XML, pasted build codes, tree-link decoding, clipboard items, comparison builds and planning remain available.
 
 ## Portable Windows application
