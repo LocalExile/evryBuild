@@ -171,10 +171,54 @@ public class PathOfBuildingTests
         Assert.Equal(2, build.Tree.AscendancyId);
         Assert.Equal(1, build.Tree.SecondaryAscendancyId);
         Assert.True(build.Tree.HasOverrides);
+        var tattoo = Assert.Single(build.Tree.Overrides);
+        Assert.Equal((100u, "Tattoo"), (tattoo.NodeId, tattoo.Name));
+        Assert.Empty(tattoo.Lines);
         Assert.Contains(70000u, build.Tree.Nodes);
         Assert.True(Assert.Single(build.Items).HasAlternateVariants);
         Assert.Equal(3, build.Items[0].Variant);
         Assert.Equal("Lifetap", Assert.Single(build.Skills).ImbuedSupport);
+    }
+
+    [Fact]
+    public void Parses_override_records_with_their_effect_lines()
+    {
+        var build = PathOfBuilding.Parse("""
+            <PathOfBuilding><Build className="Witch" />
+              <Spec classId="3" ascendClassId="0" nodes="100,101,102">
+                <Overrides>
+                  <Override nodeId="101" dn="Tattoo of the Ramako Archer" icon="a.png" activeEffectImage="b.png">
+                    5% increased Accuracy Rating
+                  </Override>
+                  <Override nodeId="100" dn="Runegraft of Bellows">
+                    100% increased Warcry Speed if you have not Warcried Recently
+                    Limited to 1 Runegraft of Bellows
+                  </Override>
+                  <Override nodeId="102" />
+                </Overrides>
+              </Spec>
+            </PathOfBuilding>
+            """);
+        Assert.Equal(3, build.Tree.Overrides.Count);
+        var archer = Assert.Single(build.Tree.Overrides, o => o.NodeId == 101);
+        Assert.Equal("Tattoo of the Ramako Archer", archer.Name);
+        Assert.Equal(["5% increased Accuracy Rating"], archer.Lines);
+        var runegraft = Assert.Single(build.Tree.Overrides, o => o.NodeId == 100);
+        Assert.Equal(["100% increased Warcry Speed if you have not Warcried Recently", "Limited to 1 Runegraft of Bellows"], runegraft.Lines);
+        Assert.Equal("", Assert.Single(build.Tree.Overrides, o => o.NodeId == 102).Name);
+        Assert.False(PathOfBuilding.Parse("""<PathOfBuilding><Build className="Witch" /><Spec classId="3" ascendClassId="0" nodes="100"><Overrides /></Spec></PathOfBuilding>""")
+            .Tree.HasOverrides);
+    }
+
+    [Theory]
+    [InlineData("""<Overrides><Override dn="Tattoo" /></Overrides>""", "Override.nodeId")]
+    [InlineData("""<Overrides><Override nodeId="x" dn="Tattoo" /></Overrides>""", "passive override")]
+    [InlineData("""<Overrides><Override nodeId="100" dn="A" /><Override nodeId="100" dn="B" /></Overrides>""", "duplicate passive overrides")]
+    public void Rejects_malformed_overrides(string overrides, string message)
+    {
+        var error = Assert.Throws<FormatException>(() => PathOfBuilding.Parse(
+            $"""<PathOfBuilding><Build className="Witch" /><Spec classId="3" ascendClassId="0" nodes="100">{overrides}</Spec></PathOfBuilding>"""));
+        Assert.Contains(message, error.Message);
     }
 
     [Fact]

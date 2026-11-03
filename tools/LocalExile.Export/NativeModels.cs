@@ -51,9 +51,13 @@ static class CharacterSaves
         int GemVariant = 0, bool Corrupted = false, byte Fractured = 0, bool Mirrored = false, byte GemFlags = 0, ushort? Visual = null,
         byte DefenceBaseRoll = 0);
     public sealed record SavedPlacement(uint Id, byte X, byte Y, SavedItem Item);
+    // Tattoos: passive node -> tattoo item name; TattooKeystones: the keystone Journey Tattoo of Makanui granted, by node.
+    // Both are upstream save fields, omitted when empty so a save without tattoos is byte-for-byte what it was.
     public sealed record Save(Dictionary<byte, List<SavedPlacement>> Inventories, Dictionary<int, string>? SkillBar = null,
         uint? Experience = null, List<ushort>? Passives = null, List<string>? Waypoints = null, List<string>? Visited = null,
-        ushort? ExtraPassivePoints = null, Dictionary<ushort, ushort>? MasteryEffects = null);
+        ushort? ExtraPassivePoints = null, Dictionary<ushort, ushort>? MasteryEffects = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Dictionary<ushort, string>? Tattoos = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Dictionary<ushort, ushort>? TattooKeystones = null);
     public static SavedItem ToSaved(Item item, ModCatalog mods) => new(item.TypeHash, item.ItemLevel, item.Quality,
         item.Charges, item.StackSize, [.. item.Sockets.Select(s => new SavedSocket(s.Colour, s.Gem is null ? null : ToSaved(s.Gem, mods)))],
         item.Links is null ? null : [.. item.Links], item.GemExperience, item.Rarity, item.Identified,

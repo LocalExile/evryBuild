@@ -72,7 +72,7 @@ end
 function M.Describe(reply)
     local lines = { reply.preview and "Preview complete. No character was created." or "Character created: " .. display(reply.character),
         string.format("%s level %s | %s",display(reply.class),display(reply.level),display(reply.league)),
-        string.format("%s items, %s gems, %s passives, %s masteries",display(reply.items),display(reply.gems),display(reply.passives),display(reply.masteries)),
+        string.format("%s items, %s gems, %s passives, %s masteries, %s tattoos",display(reply.items),display(reply.gems),display(reply.passives),display(reply.masteries),display(reply.tattoos)),
         string.format("Omitted encoding: %s items, %s enabled gems",display(reply.skippedItems),display(reply.skippedGems)) }
     lines[#lines+1]=display(reply.next)
     if reply.backup then lines[#lines+1]="SQLite backup: "..display(reply.backup) end

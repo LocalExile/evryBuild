@@ -24,7 +24,8 @@ Both sides must describe one character, so PoB is first reduced to what the serv
 
 | Left out of PoB | Why |
 |---|---|
-| Passive jewels, ascendancy, tattoos and cluster nodes | The exporter does not write them. PoB uses the saved passive list. |
+| Passive jewels, ascendancy and cluster nodes | The exporter does not write them. PoB uses the saved passive list. |
+| Tattoos the exporter skipped | The server never received them; the passive keeps its ordinary effect. Supported tattoos are written and stay on both sides. |
 | Skills and auras | A fresh server character has none active. |
 | Active flasks, bandit and Pantheon | A fresh server character has none of them. |
 | The Kitava resistance penalties | They need quest flags the character does not have. |
