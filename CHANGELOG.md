@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1 - unreleased
+## 1.0.1 - 2026-11-03
 
 - Fix **Preview** refusing builds with "Invalid ItemSet.useSecondWeaponSet; expected true or false". PoB saves a flag it never set as `nil`, which happens for any new build or added item set. evryBuild now reads PoB's weapon-swap, skill and gem flags exactly as PoB does.
 
