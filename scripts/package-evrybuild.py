@@ -45,6 +45,8 @@ REQUIRED_OUTPUTS = {EXE, "Launch.lua", "GameVersions.lua", "Modules/Main.lua", "
 
 REPOSITORY_NAME = "LocalExile/evryBuild"
 UPDATE_ASSET = "evryBuild-update.xml"
+# This fork carries upstream PoB's own tags (v1.0.0 to v2.67.2), so evryBuild's tags have a prefix of their own.
+TAG_PREFIX = "evrybuild-v"
 # Semantic Versioning 2.0.0 without build metadata: MAJOR.MINOR.PATCH, optionally -rc.1 and the like.
 IDENTIFIER = r"(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
 SEMVER = rf"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-{IDENTIFIER}(?:\.{IDENTIFIER})*)?"
@@ -64,8 +66,8 @@ class Release(NamedTuple):
 
     @property
     def label(self) -> str:
-        """The version the tag names: v1.2.0 is 1.2.0."""
-        return self.tag[1:]
+        """The version the tag names: evrybuild-v1.2.0 is 1.2.0."""
+        return self.tag[len(TAG_PREFIX):]
 
     def update_url(self) -> str:
         base = self.update_base or f"https://github.com/{REPOSITORY_NAME}/"
@@ -86,8 +88,9 @@ def parse_release(tag: str | None, update_base: str | None) -> Release | None:
         if update_base:
             raise PackageError("--update-base needs --release-tag.")
         return None
-    if not re.fullmatch("v" + SEMVER, tag):
-        raise PackageError("Release tags are v and a semantic version, such as v1.2.0 or v1.3.0-rc.1.")
+    if not re.fullmatch(re.escape(TAG_PREFIX) + SEMVER, tag):
+        raise PackageError(f"Release tags are {TAG_PREFIX} and a semantic version, such as {TAG_PREFIX}1.2.0 or "
+                           f"{TAG_PREFIX}1.3.0-rc.1. Plain v1.2.0 tags belong to upstream PoB.")
     if update_base is not None and not re.fullmatch(r"https?://[^/\s]+/(?:[^\s\"]*/)?", update_base):
         raise PackageError("--update-base must be an http(s) URL ending in /.")
     return Release(tag, update_base)
@@ -213,7 +216,7 @@ def read_version(source: Path) -> str:
 def check_release_version(source: Path, release: Release, version: str) -> None:
     """The tag, the committed VERSION and the newest changelog heading must name the same release."""
     if release.label != version:
-        raise PackageError(f"The tag {release.tag} does not match VERSION {version}. Bump VERSION and commit, or use v{version}.")
+        raise PackageError(f"The tag {release.tag} does not match VERSION {version}. Bump VERSION and commit, or use {TAG_PREFIX}{version}.")
     heading = next((line for line in release_notes(source).splitlines() if line.startswith("## ")), "")
     if not re.match(rf"## {re.escape(version)}(?:\s|$)", heading):
         raise PackageError(f"CHANGELOG.md's newest section must be headed '## {version} - <date>'; it is '{heading}'.")
@@ -376,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", required=True, type=Path, help="New portable application folder")
     parser.add_argument("--source-root", type=Path, default=REPOSITORY, help="evryBuild checkout (default: this repository)")
-    parser.add_argument("--release-tag", help="Build a self-updating release package for this tag: v and the VERSION file, such as v1.2.0")
+    parser.add_argument("--release-tag", help=f"Build a self-updating release package for this tag: {TAG_PREFIX} and the VERSION file, such as {TAG_PREFIX}1.2.0")
     parser.add_argument("--assets", type=Path, help="New folder for the files the release must attach")
     parser.add_argument("--update-base", help="Test only: serve updates from this URL instead of GitHub")
     args = parser.parse_args(argv)

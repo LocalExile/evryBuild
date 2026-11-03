@@ -2,7 +2,7 @@
 
 ## 1.0.0 - 2026-11-03
 
-- evryBuild now has its own version number, starting at 1.0.0, shown at the bottom left. Releases are tagged `v1.0.0` and so on; the dated releases before this one have no version.
+- evryBuild now has its own version number, starting at 1.0.0, shown at the bottom left. Releases are tagged `evrybuild-v1.0.0` and so on; the dated releases before this one have no version.
 - Update in place from new releases. evryBuild checks this repository's latest GitHub release at start (Options: **Check for updates at startup**) or with **Check for Update**, shows the release notes, and with **Update Now** downloads only the changed files, checks each against the release's SHA-256, installs them and restarts. A failed step undoes the earlier ones; builds and settings are never touched. Copies from the dated releases need one manual download of 1.0.0.
 
 ## evryBuild external LocalExile integration — 2026-11-03

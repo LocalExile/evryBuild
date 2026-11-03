@@ -77,7 +77,9 @@ Then, from the repository root with the exporter built and the tests passing:
 .\scripts\prepare-release.ps1
 ```
 
-The tag is `v` and the version (`v1.2.0`); `-Tag` must match `VERSION` if you pass it. The script refuses uncommitted
+The tag is `evrybuild-v` and the version (`evrybuild-v1.2.0`); `-Tag` must match `VERSION` if you pass it. Plain
+`v1.2.0` tags are not used: this fork carries upstream PoB's own tags, `v1.0.0` to `v2.67.2`, and GitHub attaches a
+release to an existing tag instead of creating one. The script refuses uncommitted
 changes, a tag that differs from `VERSION`, and a changelog heading that does not name the version. It copies every
 file exactly as that commit stores it, and writes a new
 `dist\release-<tag>-<time>` folder with the portable `evryBuild` folder and an `assets` folder holding:
@@ -98,7 +100,7 @@ uncommitted changes, and never updates itself; use it for local testing only.
 Push the commit, then create the release with the tag on that commit and attach every file in `assets`:
 
 ```powershell
-gh release create v1.2.0 --repo LocalExile/evryBuild --target <commit> --title "evryBuild 1.2.0" --notes-file <notes.md> --latest (Get-ChildItem <assets folder>).FullName
+gh release create evrybuild-v1.2.0 --repo LocalExile/evryBuild --target <commit> --title "evryBuild 1.2.0" --notes-file <notes.md> --latest (Get-ChildItem <assets folder>).FullName
 ```
 
 For a release candidate, use `--prerelease` instead of `--latest`.
