@@ -37,7 +37,7 @@ Builds and preferences remain in the extracted folder. The package contains no p
 The ZIP includes this README and [the complete setup guide](docs/LocalExile.md).
 
 Use an existing local LocalExile installation with its normal extracted game data and an existing account.
-In **Import/Export Build → Export to LocalExile**, select the server's active `saves.db`,
+In **Import/Export Build → Export to LocalExile**, select the server's active `characters.db` (or legacy `saves.db`),
 check the detected data folder, enter the account, a new character name and the league, then **Preview** and **Export**.
 Return to the game's character screen; log out and back in if the list has not refreshed.
 LocalExile can keep running during export. The exporter uses SQLite transactions and creates an online backup first.

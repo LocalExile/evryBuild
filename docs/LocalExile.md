@@ -20,9 +20,11 @@ For developer packaging, use the commands in [README](../README.md).
   Follow that installation's `Agents/GettingStarted.md` for server setup, data extraction and account registration.
   evryBuild does not create accounts or replace LocalExile's normal startup procedure.
 - Start LocalExile normally and identify the database it actually uses. The Gateway startup log prints
-  `[gateway] saves: ...`; in a source installation using `scripts/dev/live.ps1`, look in `logs/live-gateway.log`.
-  The default is `data/saves.db`, but `Game_SAVES_DB` can point elsewhere. Select the path from the running server,
-  especially if you have several installations or save databases.
+  `[gateway] saves: data\characters.db (accounts: data\auth.db)` (on older pre-split installations,
+  `[gateway] saves: data\saves.db`); in a source installation using `scripts/dev/live.ps1`, look in
+  `logs/live-gateway.log`. The current default is `data/characters.db` (`Game_CHARACTERS_DB`) with companion
+  `data/auth.db` (`Game_AUTH_DB`); older pre-split `data/saves.db` (`Game_SAVES_DB`) databases are also supported.
+  Select the path from the running server, especially if you have several installations or save databases.
 - Keep the database on a local disk with write access. Also allow creation of `evryBuild-backups/` beside it.
   The extracted game data should come from the same installation and client version as the server.
 - You may leave the server running. Finish the current play session and return to character selection before
@@ -45,9 +47,10 @@ A copy you package yourself from source never checks for updates.
 
 1. Open the build and select its active passive tree, equipment set and skill set.
 2. Open **Import/Export Build → Export to LocalExile**.
-3. Click **Browse** beside **Save database** and select the server's existing `saves.db`.
-   Normally this is `data/saves.db` inside the LocalExile installation.
-   Select the database file itself, not a backup, `-wal` or `-shm` sidecar.
+3. Click **Browse** beside **Save database** and select the server's existing `characters.db` (or legacy `saves.db`).
+   Normally this is `data/characters.db` inside the LocalExile installation, with `data/auth.db` beside it
+   (or `<name>-auth.db` for a copied database, or `Game_AUTH_DB`).
+   Select the character save database file itself, not `auth.db`, a backup, `-wal` or `-shm` sidecar.
 4. The **Game data folder** is detected beside the database when it contains `tables/` and `item-types.json`.
    If your database is elsewhere, click its Browse button and choose `item-types.json` in the server's data folder.
    The dialog selects that file's containing folder. These are the normal extracted files from LocalExile setup.
@@ -70,9 +73,10 @@ A copy you package yourself from source never checks for updates.
    Select the new character and click **Play**. The imported character starts in Lioneye's Watch.
    Press **I** to inspect equipment and socketed gems, **P** to inspect passives, and click the ground to check movement.
 
-For example, if the Gateway log shows `C:\LocalExile\data\saves.db`, choose that file. Normally the data folder
-will become `C:\LocalExile\data`. Use your existing account name, an unused name such as `ImportedWitch`,
-and `Standard` if that is the league offered by your server. Your password is used only at the game's login screen.
+For example, if the Gateway log shows `C:\LocalExile\data\characters.db (accounts: C:\LocalExile\data\auth.db)`,
+choose `C:\LocalExile\data\characters.db`. Normally the data folder will become `C:\LocalExile\data` and `auth.db` is
+attached read-only beside it. Use your existing account name, an unused name such as `ImportedWitch`, and `Standard` if
+that is the league offered by your server. Your password is used only at the game's login screen.
 
 The dialog saves only the database/data paths, account name and league in `LocalExile.json` in the active user folder.
 Legacy server URL and token fields are ignored and are removed when preferences are next saved.
@@ -126,20 +130,24 @@ Include the release/version, reproduction steps and relevant export warnings, wi
 
 ## Database safety
 
-The selected database must exist on a local drive and have the expected LocalExile tables and columns.
+The selected database must exist on a local drive and have the expected LocalExile tables and columns—either the
+current split relational layout (`characters.db` with companion `auth.db` attached read-only) or the legacy pre-split
+`saves.db` layout. If a required table, column, or companion `auth.db` is missing, the dialog names what is missing.
 The exporter never creates an empty server database, registers accounts or migrates a schema.
 Network shares are refused because SQLite locking/WAL must remain local.
 Inspection reads account IDs/names only, not stored password hashes or credentials.
 
-Creation refuses existing character metadata, native saves and legacy JSON saves, including case-only name collisions.
+Creation refuses existing character metadata, active saves and legacy JSON saves, including case-only name collisions.
 The default 24-character account limit is checked again inside the write transaction.
-Both `account_characters` and `characters` are inserted using parameters in a single immediate transaction.
-A failed write rolls back both records; existing characters are never replaced.
+`account_characters` and the character's save rows (`character_saves`, its child tables, `items` and `item_mods` on
+relational databases, or `characters` on legacy JSON databases) are inserted using parameters in a single immediate
+transaction; `auth.db` is attached read-only and never modified.
+A failed write rolls back all records; existing characters are never replaced.
 SQLite waits briefly for another writer and reports busy databases without forcing locks or stopping services.
 
 Backups use SQLite's online backup API, including committed WAL data, rather than copying an open database file.
 They are stored beside the selected database in `evryBuild-backups/` with unique timestamped names.
-They contain the server's complete accounts/saves and should stay private like the original database.
+They contain the server's character saves (and accounts for legacy `saves.db`) and should stay private like the original database.
 No automatic restore or overwrite is performed.
 The backup also has a `.export.json` report with the complete prepared warnings and compatibility findings.
 The dialog shows a bounded summary, prioritising known missing/partial effects.

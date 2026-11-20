@@ -15,30 +15,26 @@ using Microsoft.Data.Sqlite;
 static class ItemSend
 {
     const string MainInventory = "0";
+    const byte MainInventoryId = 0;
     const int MainWidth = 12, MainHeight = 5, MaximumItemCharacters = 64 * 1024;
     const uint FirstStashItemId = 0x40000000; // AccountStash.FirstItemId: a character's own item ids stay below it.
     const string RestartCommand = @".\scripts\dev\live.ps1 -Only Gateway -NoBuild";
 
     public sealed record Character(string Name, int Level, string League);
-    sealed record Target(string Name, string League, DateTimeOffset LastPlayed);
-    sealed record Placed(uint Id, byte X, byte Y, uint Type);
 
-    public static IReadOnlyList<Character> Characters(SqliteConnection connection, IReadOnlyList<ExportCommand.Destination> accounts, string? account)
+    public static IReadOnlyList<Character> Characters(SqliteConnection connection, SaveLayout layout,
+        IReadOnlyList<ExportCommand.Destination> accounts, string? account)
     {
         var owner = account is { Length: > 0 } ? accounts.SingleOrDefault(a => a.Name.Equals(account, StringComparison.OrdinalIgnoreCase))
             : accounts.Count == 1 ? accounts[0] : null;
         if (owner is null) return [];
-        var result = new List<Character>();
-        foreach (var (name, json) in Rows(connection, owner.Id, null))
-        {
-            using var row = JsonDocument.Parse(json);
-            result.Add(new(name, row.RootElement.TryGetProperty("Level", out var level) ? level.GetInt32() : 0, League(row.RootElement)));
-        }
-        return result;
+        return SaveDatabase.Characters(connection, layout, owner.Id)
+            .Select(c => new Character(c.Name, c.Level, c.League)).ToList();
     }
 
     public static object Execute(ExportCommand.Request request, string database, string data, SqliteConnection connection,
-        IReadOnlyList<ExportCommand.Destination> accounts, string version)
+        SaveLayout layout, IReadOnlyList<ExportCommand.Destination> accounts, string version,
+        Func<int, GatewayState.Snapshot>? gateway = null)
     {
         if (string.IsNullOrWhiteSpace(request.Item) || request.Item.Length > MaximumItemCharacters)
             throw new ArgumentException("Choose one item in PoB's Items tab first.");
@@ -46,7 +42,8 @@ static class ItemSend
             ?? throw new ArgumentException("The selected account does not exist in this database.");
         var catalog = new ItemCatalog(data); var warnings = new List<string>();
         var (type, parsed) = Parse(request.Item, catalog, data, warnings);
-        var item = Definition(connection, Title(request.Item), type, parsed) is { } unique ? Completed(parsed, type, unique, catalog.Mods, warnings) : parsed;
+        var item = Definition(connection, Title(request.Item), type, parsed, database, data) is { } unique
+            ? Completed(parsed, type, unique, catalog.Mods, warnings) : parsed;
         string label = Label(request.Item, type, item);
         var notes = new List<string>();
         var commands = Commands(request.Item, type, item, catalog.Mods, notes);
@@ -60,29 +57,26 @@ static class ItemSend
         if (string.IsNullOrWhiteSpace(request.Name))
             return Preview(null, null, null, "Choose a character to send it to. Copy Command works without one.");
 
-        var target = Find(connection, account.Id, request.Name, null);
-        string save = SaveOf(connection, target.Name, null);
-        var placement = Place(save, type, item, catalog);
+        var target = SaveDatabase.FindCharacter(connection, layout, account.Id, request.Name, null);
+        var snapshot = SaveDatabase.ReadCharacterSave(connection, layout, target.Name, null);
+        var placement = Place(snapshot.Placed, type, item, catalog);
         string json = JsonSerializer.Serialize(placement);
         string key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {
-            database, data, account.Id, target.Name, request.Item, json, save, version }))));
-        if (request.Operation == "item-preview") return Preview(target.Name, placement, key, Blocked(target));
+            database, data, account.Id, target.Name, request.Item, json, save = snapshot.SnapshotJson, version }))));
+        if (request.Operation == "item-preview") return Preview(target.Name, placement, key, Blocked(target, gateway));
 
         if (request.PreviewKey != key) throw new ArgumentException("The item, character or its save changed. Preview again before sending.");
-        using var writer = ExportCommand.Open(database, write: true);
-        ExportCommand.ValidateSchema(writer);
+        using var writerSession = SaveDatabase.Open(database, write: true);
+        var writer = writerSession.Connection;
+        var writerLayout = writerSession.Layout;
         using var transaction = writer.BeginTransaction(deferred: false);
         // Rechecked under the write lock: a login or an inventory change since the preview ends the send here.
-        target = Find(writer, account.Id, target.Name, transaction);
-        if (SaveOf(writer, target.Name, transaction) != save) throw new ArgumentException("The character's save changed. Preview again before sending.");
-        if (Blocked(target) is { } blocked) throw new ArgumentException(blocked);
-        string backup = Backup(database, target.Name, save);
-        using (var command = writer.CreateCommand())
-        {
-            command.Transaction = transaction; command.CommandText = "UPDATE characters SET save=$save WHERE name=$name COLLATE NOCASE";
-            command.Parameters.AddWithValue("$save", WithItem(save, placement)); command.Parameters.AddWithValue("$name", target.Name);
-            if (command.ExecuteNonQuery() != 1) throw new ArgumentException("The character's save disappeared. Nothing was sent.");
-        }
+        target = SaveDatabase.FindCharacter(writer, writerLayout, account.Id, target.Name, transaction);
+        var current = SaveDatabase.ReadCharacterSave(writer, writerLayout, target.Name, transaction);
+        if (current.SnapshotJson != snapshot.SnapshotJson) throw new ArgumentException("The character's save changed. Preview again before sending.");
+        if (Blocked(target, gateway) is { } blocked) throw new ArgumentException(blocked);
+        string backup = Backup(database, target.Name, current.SnapshotJson);
+        SaveDatabase.AddItemToMainInventory(writer, writerLayout, transaction, target.Name, current, placement);
         transaction.Commit();
         return new { ok = true, preview = false, character = target.Name, item = label, x = placement.X, y = placement.Y, backup,
             next = "Log in to the character and press I. The item is in its main inventory." };
@@ -98,17 +92,11 @@ static class ItemSend
     internal sealed record UniqueDefinition(string Name, string BaseTypeId, string[] Mods, byte ItemLevel = 86, bool Corrupted = false);
 
     // The server's catalogue row: PoB's text cannot name most unique modifiers, this row does. Older databases have no such table.
-    internal static UniqueDefinition? Definition(SqliteConnection connection, string title, ItemCatalog.BaseType type, Item item)
+    internal static UniqueDefinition? Definition(SqliteConnection connection, string title, ItemCatalog.BaseType type, Item item,
+        string? database = null, string? data = null)
     {
         if (item.Rarity != ItemRarity.Unique || item.FracturedCount > 0) return null;
-        using var c = connection.CreateCommand();
-        c.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='catalog_entries'";
-        if (c.ExecuteScalar() is null) return null;
-        c.CommandText = "SELECT payload FROM catalog_entries WHERE kind='unique_item' AND key=$key AND enabled=1";
-        // A Foulborn unique is its ordinary unique with mutated modifiers, which stay as parsed.
-        const string foulborn = "Foulborn ";
-        c.Parameters.AddWithValue("$key", $"{(title.StartsWith(foulborn, StringComparison.Ordinal) ? title[foulborn.Length..] : title)}|{type.Id}");
-        return c.ExecuteScalar() is string payload ? JsonSerializer.Deserialize<UniqueDefinition>(payload) : null;
+        return SaveDatabase.FindUniqueDefinition(connection, database, data, title, type.Id);
     }
 
     /// <summary>The unique with its catalogue modifiers: PoB's roll where its text matched the same stats, else the top of
@@ -136,42 +124,10 @@ static class ItemSend
         };
     }
 
-    static IEnumerable<(string Name, string Json)> Rows(SqliteConnection connection, string account, SqliteTransaction? transaction)
-    {
-        using var c = connection.CreateCommand(); c.Transaction = transaction;
-        c.CommandText = "SELECT name,character FROM account_characters WHERE account_id=$account ORDER BY name LIMIT 1024";
-        c.Parameters.AddWithValue("$account", account);
-        using var rows = c.ExecuteReader();
-        while (rows.Read()) yield return (rows.GetString(0), rows.GetString(1));
-    }
-
-    static string League(JsonElement character) => character.TryGetProperty("League", out var league) ? league.GetString() ?? "Standard" : "Standard";
-
-    static Target Find(SqliteConnection connection, string account, string name, SqliteTransaction? transaction)
-    {
-        foreach (var (found, json) in Rows(connection, account, transaction))
-        {
-            if (!found.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
-            using var row = JsonDocument.Parse(json); var character = row.RootElement;
-            string league = League(character);
-            if (league.Contains("Ruthless", StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("Ruthless requires a separate native format/rules adapter and is not supported by this exporter.");
-            return new(found, league, character.TryGetProperty("LastPlayedUtc", out var played) ? played.GetDateTimeOffset() : DateTimeOffset.MaxValue);
-        }
-        throw new ArgumentException($"This account has no character named {name}.");
-    }
-
-    static string SaveOf(SqliteConnection connection, string name, SqliteTransaction? transaction)
-    {
-        using var c = connection.CreateCommand(); c.Transaction = transaction;
-        c.CommandText = "SELECT save FROM characters WHERE name=$name COLLATE NOCASE"; c.Parameters.AddWithValue("$name", name);
-        return c.ExecuteScalar() as string ?? throw new ArgumentException($"{name} has no save yet. Log in with it once, then send the item.");
-    }
-
     /// <summary>What the player must do first for this write to survive, or null when it is safe now.</summary>
-    static string? Blocked(Target target)
+    static string? Blocked(SaveDatabase.CharacterTarget target, Func<int, GatewayState.Snapshot>? readGateway)
     {
-        var gateway = GatewayState.Read(GatewayState.Port);
+        var gateway = (readGateway ?? GatewayState.Read)(GatewayState.Port);
         if (gateway.ClientConnected) return "You are in game. Log out to the character screen, then click Check Again.";
         if (!gateway.Running) return null;
         if (gateway.Started is { } started && target.LastPlayed < started) return null;
@@ -180,12 +136,12 @@ static class ItemSend
             + $"From the LocalExile folder, run: {RestartCommand}";
     }
 
-    static CharacterSaves.SavedPlacement Place(string save, ItemCatalog.BaseType type, Item item, ItemCatalog catalog)
+    static CharacterSaves.SavedPlacement Place(IReadOnlyList<SaveDatabase.PlacedItem> placed, ItemCatalog.BaseType type, Item item, ItemCatalog catalog)
     {
-        var placed = Placements(save); var main = new List<(int X, int Y, int Width, int Height)>();
-        foreach (var (row, placement) in placed)
+        var main = new List<(int X, int Y, int Width, int Height)>();
+        foreach (var placement in placed)
         {
-            if (row != MainInventory) continue;
+            if (placement.Inventory != MainInventoryId) continue;
             var existing = catalog.All.FirstOrDefault(t => t.Hash == placement.Type)
                 ?? throw new ArgumentException("The character's inventory holds an item this game data does not know. Nothing was sent.");
             main.Add((placement.X, placement.Y, existing.Width, existing.Height));
@@ -194,22 +150,10 @@ static class ItemSend
             for (int y = 0; y + type.Height <= MainHeight; y++)
                 if (!main.Any(i => i.X < x + type.Width && x < i.X + i.Width && i.Y < y + type.Height && y < i.Y + i.Height))
                 {
-                    uint id = placed.Select(p => p.Item.Id).Where(i => i < FirstStashItemId).DefaultIfEmpty(0u).Max() + 1;
+                    uint id = placed.Select(p => p.Id).Where(i => i < FirstStashItemId).DefaultIfEmpty(0u).Max() + 1;
                     return new(id, (byte)x, (byte)y, CharacterSaves.ToSaved(item, catalog.Mods));
                 }
         throw new ArgumentException($"The main inventory has no free {type.Width}x{type.Height} space. Clear some room in game, then Preview again.");
-    }
-
-    static List<(string Row, Placed Item)> Placements(string save)
-    {
-        var root = JsonNode.Parse(save) as JsonObject ?? throw new ArgumentException("The character's save cannot be read. Nothing was sent.");
-        if (root["Inventories"] is not JsonObject inventories) throw new ArgumentException("The character's save has no inventories. Nothing was sent.");
-        var result = new List<(string, Placed)>();
-        foreach (var (row, items) in inventories)
-            foreach (var placement in items?.AsArray() ?? new JsonArray())
-                result.Add((row, new(placement!["Id"]!.GetValue<uint>(), placement["X"]!.GetValue<byte>(), placement["Y"]!.GetValue<byte>(),
-                    placement["Item"]!["Type"]!.GetValue<uint>())));
-        return result;
     }
 
     internal static string WithItem(string save, CharacterSaves.SavedPlacement placement)

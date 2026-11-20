@@ -131,7 +131,7 @@ function M.OpenItem(tab)
     field("dataFolder","Game data folder",76,preferences.dataFolder,395)
     field("account","Existing account",110,preferences.account)
     field("name","Character",144,tab.localExileCharacter or "")
-    controls.results=new("EditControl",{"TOPLEFT",nil,"TOPLEFT"},{20,180,630,325},warning or "Choose saves.db. Game data is detected beside it; Browse if stored elsewhere.",nil,"%z",32768,nil,16)
+    controls.results=new("EditControl",{"TOPLEFT",nil,"TOPLEFT"},{20,180,630,325},warning or "Choose characters.db (or legacy saves.db). Game data is detected beside it; Browse if stored elsewhere.",nil,"%z",32768,nil,16)
     local function result(text) controls.results:SetText(text) end
     local function fingerprint() return json.encode({trim(controls.database.buf),trim(controls.dataFolder.buf),trim(controls.account.buf),trim(controls.name.buf)}) end
     local function request(operation,key)
@@ -229,7 +229,7 @@ function M.Open(tab)
     field("name","New character",144,"")
     field("league","League",178,preferences.league)
     controls.note=new("LabelControl",{"TOPLEFT",nil,"TOPLEFT"},{20,214,0,14},"Local export: no API or token. Missing gameplay effects are kept when loadable.")
-    controls.results=new("EditControl",{"TOPLEFT",nil,"TOPLEFT"},{20,240,630,265},warning or "Choose saves.db. Game data is detected beside it; Browse if stored elsewhere.",nil,"%z",32768,nil,16)
+    controls.results=new("EditControl",{"TOPLEFT",nil,"TOPLEFT"},{20,240,630,265},warning or "Choose characters.db (or legacy saves.db). Game data is detected beside it; Browse if stored elsewhere.",nil,"%z",32768,nil,16)
     local function result(text) controls.results:SetText(text) end
     local function inspect()
         if busy then return end
@@ -289,7 +289,7 @@ function M.Attach(tab)
     if tab.controls.localExileSend then return end
     tab.controls.sectionBuild.height=222
     tab.controls.localExileSend=new("ButtonControl",{"TOPLEFT",tab.controls.importCodeMode,"BOTTOMLEFT"},{0,12,190,24},BUTTON,function() M.Open(tab) end)
-    tab.controls.localExileNote=new("LabelControl",{"LEFT",tab.controls.localExileSend,"RIGHT"},{12,0,0,14},"Export to a local saves.db; no API required.")
+    tab.controls.localExileNote=new("LabelControl",{"LEFT",tab.controls.localExileSend,"RIGHT"},{12,0,0,14},"Export to a local characters.db or saves.db; no API required.")
 end
 if type(attachedTab)=="table" and attachedTab.controls then M.Attach(attachedTab) end
 return M
